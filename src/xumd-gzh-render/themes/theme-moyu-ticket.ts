@@ -41,9 +41,7 @@ export const moyuTicket: Theme = {
     </p>
   </section>
   <section style="border-top:2px dashed {{token.borderColor}};padding:10px 20px;">
-    <span style="display:inline-block;font-size:11px;font-weight:700;color:{{token.primary}};background:{{token.primaryBg}};padding:4px 10px;border-radius:4px;border:1.5px dashed {{token.primary}};letter-spacing:0.5px;">
-      <span leaf="">{{tagLabel}}</span>
-    </span>
+    {{tagsHtml}}
   </section>
   <section style="border-top:2px dashed {{token.borderColor}};padding:12px 20px;background:{{token.grayBg}};display:flex;align-items:center;justify-content:space-between;">
     <span style="font-size:11px;color:{{token.subTextColor}};font-weight:600;letter-spacing:1px;"><span leaf="">{{bottomText}}</span></span>
@@ -65,9 +63,7 @@ export const moyuTicket: Theme = {
     </p>
   </section>
   <section style="border-top:2px dashed {{token.borderColor}};padding:10px 20px;">
-    <span style="display:inline-block;font-size:11px;font-weight:700;color:{{token.primary}};background:{{token.primaryBg}};padding:4px 10px;border-radius:4px;border:1.5px dashed {{token.primary}};letter-spacing:0.5px;">
-      <span leaf="">{{tagLabel}}</span>
-    </span>
+    {{tagsHtml}}
   </section>
   <section style="border-top:2px dashed {{token.borderColor}};padding:12px 20px;background:{{token.grayBg}};display:flex;align-items:center;justify-content:space-between;">
     <span style="font-size:11px;color:{{token.subTextColor}};font-weight:600;letter-spacing:1px;"><span leaf="">{{bottomText}}</span></span>

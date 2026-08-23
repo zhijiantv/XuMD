@@ -350,7 +350,13 @@ function registerCoverContainer(md: MarkdownIt): void {
         if (colonIdx > 0) {
           const key = line.slice(0, colonIdx).trim().toLowerCase()
           const value = line.slice(colonIdx + 1).trim()
-          meta[key] = value
+          if (key === 'tag') {
+            // tag 支持多标签：多个 tag: 行或逗号分隔都会被收集
+            const existing = meta.tag || ''
+            meta.tag = existing ? `${existing}|||${value}` : value
+          } else {
+            meta[key] = value
+          }
         }
       } else {
         // 分割线前：副标题内容

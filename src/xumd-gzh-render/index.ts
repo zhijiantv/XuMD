@@ -731,8 +731,9 @@ function replaceMarker(
     // 顶部左侧：用户自定义 top，默认"原创文章"
     const topLeftText = topText || '原创文章'
 
-    // 标签文字：用户自定义 tag，显示为 #标签名 格式
-    const tagDisplay = tagText ? `#${tagText}` : ''
+    // 标签：支持多标签（多个 tag: 行用 ||| 分隔，或单行逗号分隔）
+    // 渲染为多个 #标签名 pill，用间距隔开
+    const tagsHtml = renderCoverTags(tagText, tokens)
 
     // 底部横条文字：用户自定义 bottom，否则默认日期+字数+阅读时间
     const bottomDisplay = bottomTextCustom || topRightText
@@ -753,9 +754,10 @@ function replaceMarker(
         // 顶部右侧：日期+字数+阅读时间
         date: topRightText,
         topRight: topRightText,
-        // 标签（分割线下方，#标签名 格式）
-        tagText: tagDisplay,
-        tagLabel: tagDisplay,
+        // 标签（分割线下方，多标签 HTML）
+        tagText: tagsHtml,
+        tagLabel: tagsHtml,
+        tagsHtml: tagsHtml,
         // 底部横条文字
         bottomText: bottomDisplay,
         bottom: bottomDisplay,
@@ -970,6 +972,36 @@ function replaceTimeline(
 }
 
 // ---------- 工具函数 ----------
+
+/**
+ * 将封面 tag 原始字符串渲染为多个标签 pill 的 HTML
+ *
+ * 支持两种多标签写法：
+ *   1. 多个 tag: 行（解析器用 ||| 分隔）
+ *   2. 单行逗号分隔：tag: 标签1, 标签2, 标签3
+ *
+ * 输出示例（2 个标签）：
+ *   <span style="...">#标签1</span> <span style="...">#标签2</span>
+ */
+function renderCoverTags(tagRaw: string, tokens: ThemeTokens): string {
+  if (!tagRaw) return ''
+
+  // 先按 ||| 拆分（多个 tag: 行），再按 , 拆分（单行逗号分隔）
+  const allTags = tagRaw
+    .split('|||')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .flatMap(s => s.split(',').map(t => t.trim()).filter(Boolean))
+
+  if (allTags.length === 0) return ''
+
+  const pillStyle = `display:inline-block;font-size:11px;font-weight:600;color:${tokens.primary};background:${tokens.primaryBg};padding:4px 10px;border-radius:20px;margin-right:6px;`
+  const gap = '<span style="display:inline-block;width:4px;"></span>'
+
+  return allTags
+    .map(tag => `<span style="${pillStyle}"><span leaf="">#${escapeHtml(tag)}</span></span>`)
+    .join(gap)
+}
 
 function escapeHtml(text: string): string {
   const div = document.createElement('div')

@@ -87,19 +87,19 @@ const syntaxItems: SyntaxItem[] = [
     id: 'cover-image',
     name: '封面（带图）',
     category: 'layout',
-    desc: '杂志快讯风格封面，支持图片、标题、副标题和标签',
-    syntax: ':::cover 主标题\n副标题内容\n---\ntop: 顶部左侧\ntag: 标签名\nbottom: 底部文字\nimage: https://...\n:::',
-    sampleMd: ':::cover 封面标题示例\n副标题内容描述\n---\ntop: 原创文章\ntag: 新手指南\nbottom: 点击查看详情\nimage: https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800\n:::',
-    insert: ':::cover 封面标题\n副标题内容\n---\ntop: 原创文章\ntag: 新手指南\nbottom: 点击查看详情\nimage: 图片地址\n:::\n'
+    desc: '杂志快讯风格封面，支持图片、标题、副标题和多个标签',
+    syntax: ':::cover 主标题\n副标题内容\n---\ntop: 顶部左侧\ntag: 标签1, 标签2\ntag: 标签3\nbottom: 底部文字\nimage: https://...\n:::',
+    sampleMd: ':::cover 封面标题示例\n副标题内容描述\n---\ntop: 原创文章\ntag: 新手指南, Markdown\ntag: 公众号\nbottom: 点击查看详情\nimage: https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800\n:::',
+    insert: ':::cover 封面标题\n副标题内容\n---\ntop: 原创文章\ntag: 标签1, 标签2\ntag: 标签3\nbottom: 点击查看详情\nimage: 图片地址\n:::\n'
   },
   {
     id: 'cover-simple',
     name: '封面（无图）',
     category: 'layout',
-    desc: '简洁风格封面，适合纯文字标题',
-    syntax: ':::cover 主标题\n副标题\n---\ntop: 顶部左侧\ntag: 标签名\nbottom: 底部文字\n:::',
-    sampleMd: ':::cover 文章标题\n文章副标题\n---\ntop: 精选推荐\ntag: 深度好文\nbottom: 欢迎阅读\n:::',
-    insert: ':::cover 文章标题\n文章副标题\n---\ntop: 精选推荐\ntag: 深度好文\nbottom: 欢迎阅读\n:::\n'
+    desc: '简洁风格封面，适合纯文字标题，支持多个标签',
+    syntax: ':::cover 主标题\n副标题\n---\ntop: 顶部左侧\ntag: 标签1, 标签2\nbottom: 底部文字\n:::',
+    sampleMd: ':::cover 文章标题\n文章副标题\n---\ntop: 精选推荐\ntag: 深度好文, 干货\nbottom: 欢迎阅读\n:::',
+    insert: ':::cover 文章标题\n文章副标题\n---\ntop: 精选推荐\ntag: 标签1, 标签2\nbottom: 欢迎阅读\n:::\n'
   },
   {
     id: 'chapter',
@@ -212,6 +212,51 @@ const syntaxItems: SyntaxItem[] = [
     syntax: '`代码`',
     sampleMd: '这是一段包含`行内代码`的文字',
     insert: '`代码`'
+  },
+  {
+    id: 'ul-list',
+    name: '无序列表',
+    category: 'content',
+    desc: '圆点标记的列表项',
+    syntax: '- 列表项一\n- 列表项二\n- 列表项三',
+    sampleMd: '- 准备素材与大纲\n- 撰写正文初稿\n- 配图与排版优化',
+    insert: '- 列表项一\n- 列表项二\n- 列表项三\n'
+  },
+  {
+    id: 'ol-list',
+    name: '有序列表',
+    category: 'content',
+    desc: '自动编号的步骤列表',
+    syntax: '1. 步骤一\n2. 步骤二\n3. 步骤三',
+    sampleMd: '1. 打开编辑器新建文档\n2. 选择喜欢的主题样式\n3. 一键复制到公众号',
+    insert: '1. 步骤一\n2. 步骤二\n3. 步骤三\n'
+  },
+  {
+    id: 'nested-list',
+    name: '嵌套列表',
+    category: 'content',
+    desc: '列表项内部再缩进一层子列表',
+    syntax: '- 父列表项一\n  - 子列表项 A\n  - 子列表项 B\n- 父列表项二',
+    sampleMd: '- 准备工作\n  - 确定选题方向\n  - 收集参考资料\n- 正式写作\n  - 搭建文章结构\n  - 填充核心内容',
+    insert: '- 父列表项一\n  - 子列表项 A\n  - 子列表项 B\n- 父列表项二\n'
+  },
+  {
+    id: 'blockquote',
+    name: '引用块',
+    category: 'content',
+    desc: '左侧竖线标记的引用内容',
+    syntax: '> 引用内容文字',
+    sampleMd: '> 写作的本质不是炫技，而是把复杂的事讲清楚。',
+    insert: '> 引用内容文字\n'
+  },
+  {
+    id: 'bold-italic',
+    name: '加粗/斜体/删除线',
+    category: 'content',
+    desc: '行内文字强调：加粗、斜体、删除线',
+    syntax: '**加粗** *斜体* ~~删除线~~',
+    sampleMd: '这是**加粗文字**，这是*斜体文字*，这是~~删除线文字~~',
+    insert: '**加粗文字** *斜体文字* ~~删除线文字~~'
   },
 
   // ========== 特殊标记 ==========

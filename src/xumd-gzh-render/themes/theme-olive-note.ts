@@ -40,9 +40,7 @@ export const oliveNote: Theme = {
       <span leaf="">{{subtitle}}</span>
     </p>
     <section style="margin-top:20px;padding-top:16px;border-top:1px dashed rgba(255,255,255,0.15);">
-      <span style="display:inline-block;font-size:11px;font-weight:600;color:{{token.warningColor}};background:rgba(237,123,47,0.1);padding:4px 12px;border-radius:2px;letter-spacing:0.5px;border-left:2px solid {{token.warningColor}};">
-        <span leaf="">{{tagLabel}}</span>
-      </span>
+      {{tagsHtml}}
     </section>
   </section>
   <section style="border-top:1px solid rgba(255,255,255,0.1);padding:10px 28px;display:flex;align-items:center;justify-content:flex-end;">

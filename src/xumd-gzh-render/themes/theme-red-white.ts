@@ -55,9 +55,7 @@ export const redWhite: Theme = {
       </section>
     </section>
     <section style="margin-top:20px;padding-top:16px;border-top:1px dashed {{token.borderColor}};">
-      <span style="display:inline-block;font-size:11px;font-weight:600;color:{{token.primary}};background:{{token.primaryBg}};padding:4px 10px;border-radius:4px;">
-        <span leaf="">{{tagLabel}}</span>
-      </span>
+      {{tagsHtml}}
     </section>
   </section>
   <section style="background:linear-gradient(135deg,{{token.primary}},{{token.primaryDark}});padding:12px 24px;">
@@ -86,9 +84,7 @@ export const redWhite: Theme = {
       <span leaf="">{{subtitle}}</span>
     </p>
     <section style="margin-top:20px;padding-top:16px;border-top:1px dashed {{token.borderColor}};">
-      <span style="display:inline-block;font-size:11px;font-weight:600;color:{{token.primary}};background:{{token.primaryBg}};padding:4px 10px;border-radius:4px;">
-        <span leaf="">{{tagLabel}}</span>
-      </span>
+      {{tagsHtml}}
     </section>
   </section>
   <section style="background:linear-gradient(135deg,{{token.primary}},{{token.primaryDark}});padding:12px 24px;">

@@ -51,9 +51,7 @@ export const moyuGreen: Theme = {
       </section>
     </section>
     <section style="margin-top:20px;padding-top:16px;border-top:1px dashed {{token.primaryBg}};">
-      <span style="display:inline-block;font-size:11px;font-weight:600;color:{{token.primary}};background:{{token.primaryBg}};padding:4px 10px;border-radius:20px;">
-        <span leaf="">{{tagLabel}}</span>
-      </span>
+      {{tagsHtml}}
     </section>
   </section>
   <section style="background:linear-gradient(135deg,{{token.primary}},{{token.primaryLight}});padding:12px 28px;display:flex;align-items:center;justify-content:space-between;">
@@ -80,9 +78,7 @@ export const moyuGreen: Theme = {
       </p>
     </section>
     <section style="margin-top:20px;padding-top:16px;border-top:1px dashed {{token.primaryBg}};">
-      <span style="display:inline-block;font-size:11px;font-weight:600;color:{{token.primary}};background:{{token.primaryBg}};padding:4px 10px;border-radius:20px;">
-        <span leaf="">{{tagLabel}}</span>
-      </span>
+      {{tagsHtml}}
     </section>
   </section>
   <section style="background:linear-gradient(135deg,{{token.primary}},{{token.primaryLight}});padding:12px 28px;display:flex;align-items:center;justify-content:space-between;">

@@ -47,9 +47,7 @@ export const graphiteMin: Theme = {
       </section>
     </section>
     <section style="margin-top:24px;padding-top:20px;border-top:1px solid {{token.dividerColor}};">
-      <span style="font-size:11px;color:{{token.subTextColor}};font-weight:400;letter-spacing:1px;">
-        <span leaf="">{{tagLabel}}</span>
-      </span>
+      {{tagsHtml}}
     </section>
   </section>
   <section style="padding:12px 24px;border-top:1px solid {{token.dividerColor}};background:{{token.grayBg}};">
@@ -72,9 +70,7 @@ export const graphiteMin: Theme = {
       <span leaf="">{{subtitle}}</span>
     </p>
     <section style="margin-top:24px;padding-top:20px;border-top:1px solid {{token.dividerColor}};">
-      <span style="font-size:11px;color:{{token.subTextColor}};font-weight:400;letter-spacing:1px;">
-        <span leaf="">{{tagLabel}}</span>
-      </span>
+      {{tagsHtml}}
     </section>
   </section>
   <section style="padding:12px 24px;border-top:1px solid {{token.dividerColor}};background:{{token.grayBg}};">

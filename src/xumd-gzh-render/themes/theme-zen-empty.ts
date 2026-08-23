@@ -48,9 +48,7 @@ export const zenEmpty: Theme = {
       </section>
     </section>
     <section style="margin-top:28px;padding-top:20px;border-top:1px solid {{token.dividerColor}};">
-      <span style="font-size:11px;color:{{token.primary}};letter-spacing:1px;">
-        <span leaf="">{{tagLabel}}</span>
-      </span>
+      {{tagsHtml}}
     </section>
   </section>
   <section style="padding:14px 24px;border-top:1px solid {{token.dividerColor}};background:{{token.grayBg}};">
