@@ -1,0 +1,8 @@
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- 黑色圆角方形背景 -->
+  <rect x="2" y="2" width="28" height="28" rx="6" fill="#1A1A1A"/>
+  <!-- 顶部绿色装饰条 -->
+  <rect x="10" y="7" width="12" height="2" rx="1" fill="#10B981"/>
+  <!-- X 字母（白色，粗体，适合小尺寸显示） -->
+  <path d="M9 12 L13 16 L9 20 L10.5 20 L16 16.5 L21.5 20 L23 20 L19 16 L23 12 L21.5 12 L16 15.5 L10.5 12 Z" fill="#FFFFFF"/>
+</svg>

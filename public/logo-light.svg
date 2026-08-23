@@ -1,0 +1,10 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- 白色圆角方形背景（深色模式显示） -->
+  <rect x="76" y="76" width="360" height="360" rx="62" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="2"/>
+  <!-- 顶部绿色装饰条 -->
+  <rect x="166" y="138" width="180" height="20" rx="10" fill="#10B981"/>
+  <!-- X 字母（深灰） -->
+  <path d="M152 210 L212 270 L152 330 L190 330 L256 282 L322 330 L360 330 L300 270 L360 210 L322 210 L256 258 L190 210 Z" fill="#1A1A1A"/>
+  <!-- XuMD 文字 -->
+  <text x="256" y="410" text-anchor="middle" font-family="Arial, sans-serif" font-size="52" font-weight="bold" fill="#1A1A1A">XuMD</text>
+</svg>
