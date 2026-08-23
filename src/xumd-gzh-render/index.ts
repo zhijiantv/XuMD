@@ -405,14 +405,19 @@ function replaceUl(
   structure: ThemeStructure
 ): void {
   const items: string[] = []
-  const lis = el.querySelectorAll('li')
-  lis.forEach(li => {
-    const content = li.innerHTML.trim()
-    items.push(renderTemplate(components.unorderedListItem, {
-      tokens,
-      structure,
-      vars: { content }
-    }))
+  // 只获取直接子元素 <li>，避免重复处理嵌套列表中的 <li>
+  Array.from(el.children).forEach(child => {
+    if (child.tagName.toLowerCase() === 'li') {
+      const content = child.innerHTML.trim()
+      // 嵌套列表已由递归 processNode 先行渲染为 <section>，
+      // 需要给这些代表子列表项的 section 加缩进，体现层级关系
+      const indentedContent = indentNestedListItems(content)
+      items.push(renderTemplate(components.unorderedListItem, {
+        tokens,
+        structure,
+        vars: { content: indentedContent }
+      }))
+    }
   })
   replaceWith(el, items.join(''))
 }
@@ -425,19 +430,55 @@ function replaceOl(
   structure: ThemeStructure
 ): void {
   const items: string[] = []
-  const lis = el.querySelectorAll('li')
-  lis.forEach((li, idx) => {
-    const content = li.innerHTML.trim()
-    items.push(renderTemplate(components.orderedListItem, {
-      tokens,
-      structure,
-      vars: {
-        content,
-        index: String(idx + 1).padStart(2, '0')
-      }
-    }))
+  // 只获取直接子元素 <li>，避免重复处理嵌套列表中的 <li>
+  let idx = 0
+  Array.from(el.children).forEach(child => {
+    if (child.tagName.toLowerCase() === 'li') {
+      const content = child.innerHTML.trim()
+      // 嵌套列表已由递归 processNode 先行渲染为 <section>，
+      // 需要给这些代表子列表项的 section 加缩进，体现层级关系
+      const indentedContent = indentNestedListItems(content)
+      items.push(renderTemplate(components.orderedListItem, {
+        tokens,
+        structure,
+        vars: {
+          content: indentedContent,
+          index: String(++idx).padStart(2, '0')
+        }
+      }))
+    }
   })
   replaceWith(el, items.join(''))
+}
+
+/**
+ * 给列表项内容中嵌套的子列表 <section> 添加左侧缩进
+ *
+ * 由于 processNode 递归是先深后宽（先子节点后自身），
+ * 当 replaceUl/replaceOl 处理外层列表时，内层 <ul>/<ol>
+ * 已经被替换成了若干 <section>（子列表项模板）。
+ * 这些 section 如果不加 padding-left，就会跟父级列表项对齐，
+ * 无法体现嵌套层级。
+ */
+function indentNestedListItems(contentHtml: string): string {
+  if (!contentHtml || !contentHtml.includes('<section')) return contentHtml
+
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(`<div id="xumd-indent">${contentHtml}</div>`, 'text/html')
+  const wrapper = doc.getElementById('xumd-indent')
+  if (!wrapper) return contentHtml
+
+  // 给内容中顶层（直接子元素）的 section 加缩进
+  // 这些 section 是嵌套列表被 replaceUl/replaceOl 替换后的产物
+  Array.from(wrapper.children).forEach(child => {
+    if (child.tagName.toLowerCase() === 'section') {
+      const existing = child.getAttribute('style') || ''
+      const separator = existing && !existing.endsWith(';') ? ';' : ''
+      child.setAttribute('style', `${existing}${separator}padding-left:20px;margin-top:8px;`)
+    }
+  })
+
+  return wrapper.innerHTML
 }
 
 // pre → 代码块
