@@ -2,7 +2,7 @@
 
 > 基于 WeMD 框架，移植 gzh-design-skill 核心组件与主题样式的公众号 Markdown 编辑器
 > 
-> 所有代码采用TraeWork开发，有问题可自行进行二次开发
+> 所有代码采用WorkBuddy开发，有问题可自行进行二次开发
 
 ![XuMD](public/示例1.png)
 
