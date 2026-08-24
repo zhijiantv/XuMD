@@ -28,7 +28,7 @@
 
     <!-- 右侧：操作按钮 -->
     <div class="mobile-toolbar-actions">
-      <button class="mobile-action-btn primary" @click="$emit('copy-wechat')" title="复制到公众号">
+      <button class="mobile-action-btn primary" @click="showCopyWarn = true" title="复制到公众号">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -79,6 +79,27 @@
         </button>
       </div>
     </div>
+
+    <!-- 移动端复制警告弹窗：仅在移动端点击"复制到公众号"时出现，
+         确认后才执行真正的复制（emit copy-wechat），电脑端不受影响 -->
+    <div v-if="showCopyWarn" class="copy-warn-overlay" @click.self="showCopyWarn = false">
+      <div class="copy-warn-modal">
+        <div class="copy-warn-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <p class="copy-warn-text">
+          移动端复制到公众号助手会丢失样式，<br />推荐在 PC 端操作
+        </p>
+        <div class="copy-warn-actions">
+          <button class="copy-warn-btn cancel" @click="showCopyWarn = false">取消</button>
+          <button class="copy-warn-btn confirm" @click="confirmCopy">仍要复制</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -100,10 +121,18 @@ const emit = defineEmits<{
 }>()
 
 const showMenu = ref(false)
+// 移动端"复制到公众号"警告弹窗状态
+const showCopyWarn = ref(false)
 
 function handleCopyHtml() {
   showMenu.value = false
   emit('copy-html')
+}
+
+// 弹窗中点击"仍要复制"才真正触发复制（emit 给父组件执行）
+function confirmCopy() {
+  showCopyWarn.value = false
+  emit('copy-wechat')
 }
 
 function handleOpenTheme() {
@@ -285,5 +314,101 @@ function handleOpenImageHost() {
 @keyframes slideUp {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
+}
+
+/* 复制警告弹窗 */
+.copy-warn-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 32px;
+  animation: fadeIn 0.2s ease;
+}
+
+.copy-warn-modal {
+  width: 100%;
+  max-width: 320px;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 24px 20px 20px;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+  animation: popIn 0.22s ease;
+}
+
+.mobile-toolbar.dark .copy-warn-modal {
+  background: #1e293b;
+}
+
+.copy-warn-icon {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: #fef3c7;
+  color: #f59e0b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-toolbar.dark .copy-warn-icon {
+  background: #4d3b16;
+  color: #fbbf24;
+}
+
+.copy-warn-text {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #475569;
+}
+
+.mobile-toolbar.dark .copy-warn-text {
+  color: #cbd5e1;
+}
+
+.copy-warn-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.copy-warn-btn {
+  flex: 1;
+  height: 44px;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.copy-warn-btn:active {
+  transform: scale(0.97);
+}
+
+.copy-warn-btn.cancel {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.mobile-toolbar.dark .copy-warn-btn.cancel {
+  background: #334155;
+  color: #94a3b8;
+}
+
+.copy-warn-btn.confirm {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #ffffff;
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
 }
 </style>

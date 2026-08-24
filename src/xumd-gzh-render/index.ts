@@ -1095,34 +1095,38 @@ function unwrapLeafSpans(html: string): string {
 }
 
 /**
- * 把复制输出中的 display:flex 横向布局转换为 table 布局。
+ * 移动端兼容转换：公众号助手 App / 移动端渲染器
+ * 不支持 display:flex / display:inline-flex 及其全部子属性，
+ * 且 display:table/table-cell 在移动端 WebView 中也有严重缺陷
+ *（table-cell 会被撑成等高导致圆形变椭圆、等分宽度导致文字被挤压）。
  *
- * 原因：公众号助手 App 以及公众号移动端渲染器（已发布文章在手机上阅读）
- * **不支持 display:flex**，会把横向排列的封面/目录/章节等塌缩为纵向堆叠，
- * 表现为"封面被拉长、样式混乱"。
- *
- * 转换为 display:table + display:table-cell 后，在桌面编辑器、移动端 App、
- * 已发布文章（移动端阅读）中都能正确横向排列，是微信公众号生态通用的稳妥方案。
+ * 本函数将所有 flex / inline-flex 布局转换为仅使用基础 CSS 的等价布局：
+ * - 横向排列 → float:left + overflow:hidden（ universally supported ）
+ * - flex:1 弹性区 → overflow:hidden（自动填充剩余空间）
+ * - space-between → float:left / float:right
+ * - 纵向排列（column）→ 直接剥离 flex，block 流天然纵向
+ * - 圆形/徽章居中 → line-height=height + text-align:center
+ * - gap → 转换为 margin-left（float 布局下）
  *
  * 仅作用于复制输出（copyOutputHtml），不影响编辑器内的实时预览。
  */
 function flexToTable(html: string): string {
-  if (!html || !html.includes('display:flex')) return html
+  if (!html || !html.includes('flex')) return html
 
   const parser = new DOMParser()
   const doc = parser.parseFromString(`<div id="xumd-flex">${html}</div>`, 'text/html')
   const root = doc.getElementById('xumd-flex')
   if (!root) return html
 
-  // 收集所有含 display:flex 的元素，按 DOM 深度降序处理（先深后浅）
+  // 收集所有含 display:flex 或 display:inline-flex 的元素，按 DOM 深度降序处理（先深后浅）
   const flexEls: HTMLElement[] = []
   root.querySelectorAll('*').forEach(el => {
     const style = (el as HTMLElement).getAttribute('style') || ''
-    if (/\bdisplay\s*:\s*flex\b/.test(style)) flexEls.push(el as HTMLElement)
+    if (/\bdisplay\s*:\s*(inline-)?flex\b/.test(style)) flexEls.push(el as HTMLElement)
   })
   flexEls.sort((a, b) => domDepth(b) - domDepth(a))
 
-  flexEls.forEach(el => convertFlexToTable(el))
+  flexEls.forEach(el => convertFlexCompat(el))
 
   return root.innerHTML
 }
@@ -1134,71 +1138,154 @@ function domDepth(el: Element): number {
   return d
 }
 
-function convertFlexToTable(el: HTMLElement): void {
+/**
+ * 将单个 flex/inline-flex 元素转换为移动端兼容布局。
+ * 核心策略：使用 float+overflow 替代 flex/table，避免 table-cell 的等高/等宽问题。
+ */
+function convertFlexCompat(el: HTMLElement): void {
   const style = el.getAttribute('style') || ''
-  if (!/\bdisplay\s*:\s*flex\b/.test(style)) return
+  if (!/\bdisplay\s*:\s*(inline-)?flex\b/.test(style)) return
+
+  const isColumn = /flex-direction\s*:\s*column/.test(style)
+  const isSpaceBetween = /justify-content\s*:\s*space-between/.test(style)
+
+  // 提取 gap 值
+  const gapMatch = style.match(/gap\s*:\s*([\d.]+)(px)?/i)
+  const gapPx = gapMatch ? parseFloat(gapMatch[1]) : 0
 
   const children = Array.from(el.children).filter(
     c => c.nodeType === Node.ELEMENT_NODE
   ) as HTMLElement[]
 
-  if (children.length === 0) {
-    // 没有元素子节点：直接去掉 flex 相关属性即可
-    el.setAttribute('style', stripFlexProps(style))
+  // ─── 场景 A：无或单子元素 ───
+  if (children.length <= 1) {
+    el.setAttribute('style', stripAllFlexProps(style))
+    if (children.length === 1) fixCentering(children[0])
     return
   }
 
-  const isSpaceBetween = /justify-content\s*:\s*space-between/.test(style)
-  const alignTop = /align-items\s*:\s*flex-start/.test(style)
-  const vAlign = alignTop ? 'top' : 'middle'
+  // ─── 场景 B：纵向 flex（column）───
+  if (isColumn) {
+    let newStyle = stripAllFlexProps(style)
+    if (!/\bwidth\b/.test(newStyle)) newStyle += ';width:100%'
+    el.setAttribute('style', cleanS(newStyle))
+    children.forEach(c => {
+      c.setAttribute('style', cleanS(stripAllFlexProps(c.getAttribute('style') || '')))
+      fixCentering(c)
+    })
+    return
+  }
 
-  // 父元素：flex → table
-  let parentStyle = style
-    .replace(/display\s*:\s*flex/g, 'display:table')
-    .replace(/align-items\s*:[^;]+;?/g, '')
-    .replace(/justify-content\s*:[^;]+;?/g, '')
-    .replace(/gap\s*:[^;]+;?/g, '')
-    .replace(/;\s*;+/g, ';')
-    .replace(/;\s*}/g, '}')
-    .trim()
-  parentStyle += parentStyle.endsWith(';') ? '' : ';'
-  parentStyle += 'width:100%;border-collapse:collapse;'
-  el.setAttribute('style', parentStyle)
+  // ─── 场景 C：横向 flex（默认 row）───
 
-  // 子元素：→ table-cell
+  // 子策略 C1：space-between 且 2+ 子元素 → float:left/right
+  if (isSpaceBetween && children.length >= 2) {
+    let parentStyle = stripAllFlexProps(style)
+    parentStyle += ';overflow:hidden;width:100%'
+    el.setAttribute('style', cleanS(parentStyle))
+
+    children.forEach((child, idx) => {
+      let cStyle = stripAllFlexProps(child.getAttribute('style') || '')
+      if (idx === 0) cStyle += ';float:left'
+      else if (idx === children.length - 1) cStyle += ';float:right'
+      else cStyle += ';display:inline-block;vertical-align:middle'
+      child.setAttribute('style', cleanS(cStyle))
+      fixCentering(child)
+    })
+    return
+  }
+
+  // ─── 子策略 C2：普通横向 → float 布局（核心修复）────
+  //
+  // 为什么不用 display:table：
+  //   table-cell 会强制等高 → 圆形编号(22px)被多行文本撑成椭圆 ❌
+  //   table-cell 默认等宽 → "原创文章"被挤压成竖排 ❌
+  //
+  // float 布局的优势：
+  //   每个元素保持自然尺寸，不被兄弟撑大 ✅
+  //   flex:1 用 overflow:hidden 自动填充剩余空间 ✅
+  //   所有移动端 WebView 完美支持 ✅
+
+  let parentStyle = stripAllFlexProps(style)
+  parentStyle += ';overflow:hidden;width:100%'
+  el.setAttribute('style', cleanS(parentStyle))
+
+  // 预扫描：标记哪些子元素是"弹性填充型"（flex:1/flex-grow）
+  const isElastic = children.map(c => {
+    const cs = c.getAttribute('style') || ''
+    return /\bflex\s*:\s*1\b/.test(cs) || /\bgrow-grow\s*:\s*[1-9]/.test(cs)
+  })
+
   children.forEach((child, idx) => {
-    const cStyle = child.getAttribute('style') || ''
-    let newC = cStyle
-      .replace(/flex\s*:\s*[0-9]+(\s+[0-9]+\s+[0-9a-z%]+)?;?/g, '')
-      .replace(/flex-grow\s*:[^;]+;?/g, '')
-      .replace(/flex-shrink\s*:[^;]+;?/g, '')
-      .replace(/flex-basis\s*:[^;]+;?/g, '')
-      .replace(/;\s*;+/g, ';')
-      .trim()
+    const cRaw = child.getAttribute('style') || ''
+    let cStyle = stripAllFlexProps(cRaw)
 
-    // flex:1 / flex-grow → 占满剩余宽度
-    if (/flex\s*:\s*1\b/.test(cStyle) || /flex-grow\s*:\s*[1-9]/.test(cStyle)) {
-      newC += ';width:100%;'
-    }
-    newC += `;display:table-cell;vertical-align:${vAlign};`
-
-    // space-between 且恰有两个子元素：最后一个右对齐并占满，模拟两端对齐
-    if (isSpaceBetween && children.length === 2 && idx === 1) {
-      newC += 'text-align:right;'
+    if (isElastic[idx]) {
+      // 弹性子元素：不 float，用 overflow:hidden 占满剩余空间
+      if (gapPx > 0 && idx > 0) cStyle += `;margin-left:${gapPx}px`
+    } else {
+      // 非弹性子元素：float:left 使其保持自然尺寸
+      cStyle += ';float:left'
+      if (idx > 0 && gapPx > 0) {
+        // gap 转为 margin-left（float 元素之间）
+        cStyle += `;margin-left:${gapPx}px`
+      }
     }
 
-    child.setAttribute('style', newC.replace(/;\s*;+/g, ';').trim())
+    child.setAttribute('style', cleanS(cStyle))
+    fixCentering(child)
   })
 }
 
-function stripFlexProps(style: string): string {
+/**
+ * 修复圆形/徽章元素的居中问题。
+ * 当原元素是 inline-flex + align-items:center + justify-content:center
+ * （常用于步骤编号、圆点等），flex 被剥离后文字不再居中。
+ * 用 line-height=height + text-align=center 实现同等效果。
+ */
+function fixCentering(el: HTMLElement): void {
+  const style = el.getAttribute('style') || ''
+  const hMatch = style.match(/height\s*:\s*([\d.]+)(px)?/i)
+  const hasBorderRadius = /border-radius\s*:\s*(50%|[3-9]\d%|[\d.]+px)/i.test(style)
+  if (hMatch && hasBorderRadius) {
+    const hVal = hMatch[1] + (hMatch[2] || 'px')
+    let newStyle = style
+    if (!/\btext-align\s*:/.test(newStyle)) newStyle += ';text-align:center'
+    if (!/\bline-height\s*:/.test(newStyle)) newStyle += `;line-height:${hVal}`
+    if (!/\boverflow\s*:/.test(newStyle)) newStyle += ';overflow:hidden'
+    el.setAttribute('style', cleanS(newStyle))
+  }
+}
+
+/** 从样式中移除所有 flex 相关属性 */
+function stripAllFlexProps(style: string): string {
   return style
-    .replace(/display\s*:\s*flex/g, 'display:block')
+    .replace(/display\s*:\s*flex\b[^;]*;?/g, '')
+    .replace(/display\s*:\s*inline-flex\b[^;]*;?/g, '')
     .replace(/align-items\s*:[^;]+;?/g, '')
+    .replace(/align-content\s*:[^;]+;?/g, '')
     .replace(/justify-content\s*:[^;]+;?/g, '')
+    .replace(/justify-self\s*:[^;]+;?/g, '')
+    .replace(/align-self\s*:[^;]+;?/g, '')
     .replace(/gap\s*:[^;]+;?/g, '')
+    .replace(/row-gap\s*:[^;]+;?/g, '')
+    .replace(/column-gap\s*:[^;]+;?/g, '')
+    .replace(/flex\s*:[^;]+;?/g, '')
+    .replace(/flex-grow\s*:[^;]+;?/g, '')
+    .replace(/flex-shrink\s*:[^;]+;?/g, '')
+    .replace(/flex-basis\s*:[^;]+;?/g, '')
+    .replace(/flex-wrap\s*:[^;]+;?/g, '')
+    .replace(/flex-direction\s*:[^;]+;?/g, '')
+    .replace(/order\s*:[^;]+;?/g, '')
     .replace(/;\s*;+/g, ';')
     .trim()
+}
+
+/** 清理样式字符串 */
+function cleanS(s: string): string {
+  s = s.replace(/;\s*;+/g, ';').trim()
+  if (s.endsWith(';')) s = s.slice(0, -1)
+  return s
 }
 
 /**
