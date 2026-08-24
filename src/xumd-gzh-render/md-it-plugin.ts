@@ -50,6 +50,16 @@ export function gzhMdPlugin(md: MarkdownIt, options: GzhPluginOptions = {}): voi
   registerCoverContainer(md)
   registerSpecialMarkers(md)
   registerHrContainer(md)
+  // 新增语法（对齐 wemd 文档）
+  registerCarousel(md)
+  registerGithubAlerts(md)
+  registerTaskList(md)
+  registerUnderlineInline(md)
+  registerSupSubInline(md)
+  registerEmojiInline(md)
+  registerMathBlock(md)
+  registerMermaidBlock(md)
+  registerAttributes(md)
 }
 
 // ============================================================
@@ -798,5 +808,466 @@ function registerHrContainer(md: MarkdownIt): void {
     const v = (t.info || 'solid').replace(/"/g, '')
     const txt = (t.content || '').replace(/"/g, '')
     return `<section class="gzh-hr" data-variant="${v}" data-text="${txt}"></section>`
+  }
+}
+
+// ============================================================
+// 水平滑动图组：<![描述1](url1),![描述2](url2),...>
+// 公众号中展示可左右滑动的多图
+// ============================================================
+
+function registerCarousel(md: MarkdownIt): void {
+  md.block.ruler.before('paragraph', 'gzh_carousel', (state, startLine, _endLine, silent) => {
+    const startPos = state.bMarks[startLine] + state.tShift[startLine]
+    const lineText = state.src.slice(startPos, state.eMarks[startLine]).trim()
+
+    // 必须以 <![ 开头，且包含至少一个 ![...](...)
+    if (!lineText.startsWith('<![') || !/!\[[^\]]*\]\([^)]*\)/.test(lineText)) return false
+    if (silent) return true
+
+    // 提取所有 ![alt](url)
+    const imgRe = /!\[([^\]]*)\]\(([^)]+)\)/g
+    const images: Array<{ alt: string; url: string }> = []
+    let m: RegExpExecArray | null
+    while ((m = imgRe.exec(lineText)) !== null) {
+      images.push({ alt: m[1].trim(), url: m[2].trim() })
+    }
+    if (images.length === 0) return false
+
+    const token = state.push('gzh_carousel', 'section', 0)
+    token.info = JSON.stringify(images)
+    token.map = [startLine, startLine + 1]
+
+    state.line = startLine + 1
+    return true
+  })
+
+  md.renderer.rules.gzh_carousel = (tokens, idx) => {
+    try {
+      const images = JSON.parse(tokens[idx].info) as Array<{ alt: string; url: string }>
+      const data = encodeURIComponent(JSON.stringify(images.map(i => ({ alt: i.alt, url: i.url }))))
+      return `<section class="gzh-carousel" data-images="${escapeAttr(data)}"></section>\n`
+    } catch {
+      return '<section class="gzh-carousel"></section>\n'
+    }
+  }
+}
+
+// ============================================================
+// GitHub 风格提示块：> [!NOTE] / [!TIP] / [!IMPORTANT] / [!WARNING] / [!CAUTION]
+// 将 blockquote 中以 [!TYPE] 开头的块解析为提示卡
+// ============================================================
+
+const GITHUB_ALERT_TYPES = ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION']
+
+function registerGithubAlerts(md: MarkdownIt): void {
+  md.block.ruler.before('blockquote', 'gzh_github_alert', (state, startLine, endLine, silent) => {
+    const startPos = state.bMarks[startLine] + state.tShift[startLine]
+    const lineText = state.src.slice(startPos, state.eMarks[startLine])
+
+    // 匹配 > [!TYPE] 开头
+    const firstMatch = lineText.match(/^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$/)
+    if (!firstMatch) return false
+    if (silent) return true
+
+    const type = firstMatch[1]
+    const firstTitle = firstMatch[2] || ''
+
+    // 收集所有 > 开头的后续行（属于该提示块），直到遇到非 > 行
+    const rawLines: string[] = []
+    let nextLine = startLine
+    while (nextLine < endLine) {
+      const p = state.bMarks[nextLine] + state.tShift[nextLine]
+      const t = state.src.slice(p, state.eMarks[nextLine])
+      const mm = t.match(/^>\s?(.*)$/)
+      if (!mm) break
+      rawLines.push(mm[1])
+      nextLine++
+    }
+    if (nextLine === startLine) return false
+
+    // 第一行的标题（[!TYPE] 后的文字）作为卡片标题；其余作为正文（透传给 markdown-it 再渲染）
+    const bodyLines = rawLines.slice(1)
+    const bodySrc = bodyLines.join('\n')
+
+    const openToken = state.push('gzh_github_alert_open', 'section', 1)
+    openToken.info = JSON.stringify({ type, title: firstTitle, body: bodySrc })
+    openToken.map = [startLine, nextLine]
+
+    const closeToken = state.push('gzh_github_alert_close', 'section', -1)
+    closeToken.map = [startLine, nextLine]
+
+    state.line = nextLine
+    return true
+  })
+
+  md.renderer.rules.gzh_github_alert_open = (tokens, idx) => {
+    try {
+      const { type, title, body } = JSON.parse(tokens[idx].info)
+      const safeType = GITHUB_ALERT_TYPES.includes(type) ? type : 'NOTE'
+      const safeTitle = escapeAttr(title || '')
+      const safeBody = escapeAttr(body || '')
+      return `<section class="gzh-github-alert" data-type="${safeType}" data-title="${safeTitle}" data-body="${safeBody}">`
+    } catch {
+      return '<section class="gzh-github-alert" data-type="NOTE" data-title="" data-body=""></section>'
+    }
+  }
+  md.renderer.rules.gzh_github_alert_close = () => '</section>\n'
+}
+
+// ============================================================
+// 任务列表：- [ ] 未完成 / - [x] 已完成
+// 通过自定义 inline 标记 + 后处理识别复选框
+// ============================================================
+
+function registerTaskList(md: MarkdownIt): void {
+  // 在列表项渲染后，检测 [ ] / [x] 开头的文本，替换为任务项结构
+  md.core.ruler.push('gzh_tasklist', state => {
+    const tokens = state.tokens
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i]
+      if (t.type !== 'inline') continue
+      const children = t.children
+      if (!children || children.length === 0) continue
+      const first = children[0]
+      // 检测开头为 [ ] 或 [x] 的文本
+      if (first.type === 'text' && /^\[([ xX])\]\s/.test(first.content)) {
+        const m = first.content.match(/^\[([ xX])\]\s(.*)$/)
+        if (m) {
+          const checked = m[1].toLowerCase() === 'x'
+          const rest = m[2]
+          // 将该 inline token 的内容整体作为一个任务项，标记给后处理
+          const wrap = new state.Token('gzh_task_item_open', 'span', 1)
+          wrap.attrSet('class', 'gzh-task-item')
+          wrap.attrSet('data-checked', checked ? 'true' : 'false')
+          const textToken = new state.Token('text', '', 0)
+          textToken.content = rest
+          const wrapClose = new state.Token('gzh_task_item_close', 'span', -1)
+          // 重构 children
+          children[0] = wrap
+          children.splice(1, 0, textToken, wrapClose)
+        }
+      }
+    }
+    return true
+  })
+}
+
+// ============================================================
+// ++下划线++ 行内语法（关键词下划线标记）
+// ============================================================
+
+function registerUnderlineInline(md: MarkdownIt): void {
+  md.inline.ruler.after('emphasis', 'gzh_underline', (state, silent) => {
+    const start = state.pos
+    const src = state.src
+    if (src.charCodeAt(start) !== 0x2B /* + */) return false
+    if (src.charCodeAt(start + 1) !== 0x2B) return false
+
+    let pos = start + 2
+    let found = false
+    while (pos < src.length) {
+      if (src.charCodeAt(pos) === 0x2B && src.charCodeAt(pos + 1) === 0x2B) {
+        if (pos === start + 2) { pos += 2; continue }
+        found = true
+        break
+      }
+      if (src.charCodeAt(pos) === 0x5C) { pos += 2; continue }
+      pos++
+    }
+    if (!found) return false
+    const content = src.slice(start + 2, pos)
+    if (!content.trim()) return false
+    if (!silent) {
+      const token = state.push('gzh_underline', 'span', 0)
+      token.content = content
+      token.markup = '++'
+    }
+    state.pos = pos + 2
+    return true
+  })
+
+  md.renderer.rules.gzh_underline = (tokens, idx) => {
+    return `<span class="gzh-underline">${tokens[idx].content}</span>`
+  }
+}
+
+// ============================================================
+// ^上标^ 与 ~下标~ 行内语法
+// ============================================================
+
+function registerSupSubInline(md: MarkdownIt): void {
+  // 上标 ^
+  md.inline.ruler.after('emphasis', 'gzh_sup', (state, silent) => {
+    const start = state.pos
+    const src = state.src
+    if (src.charCodeAt(start) !== 0x5E /* ^ */) return false
+    if (src.charCodeAt(start + 1) === 0x5E) return false // 跳过 ^^
+    let pos = start + 1
+    let found = false
+    while (pos < src.length) {
+      const c = src.charCodeAt(pos)
+      if (c === 0x5E) { found = true; break }
+      if (c === 0x5C) { pos += 2; continue }
+      if (c === 0x20 || c === 0x0A || c === 0x0D) return false // 不允许跨空格/换行
+      pos++
+    }
+    if (!found) return false
+    const content = src.slice(start + 1, pos)
+    if (!content.trim()) return false
+    if (!silent) {
+      const token = state.push('gzh_sup', 'sup', 0)
+      token.content = content
+    }
+    state.pos = pos + 1
+    return true
+  })
+
+  // 下标 ~（注意：~~ 已被删除线占用，需在 emphasis 之后、避免冲突）
+  md.inline.ruler.after('emphasis', 'gzh_sub', (state, silent) => {
+    const start = state.pos
+    const src = state.src
+    if (src.charCodeAt(start) !== 0x7E /* ~ */) return false
+    if (src.charCodeAt(start + 1) === 0x7E) return false // 跳过 ~~（删除线）
+    let pos = start + 1
+    let found = false
+    while (pos < src.length) {
+      const c = src.charCodeAt(pos)
+      if (c === 0x7E) { found = true; break }
+      if (c === 0x5C) { pos += 2; continue }
+      if (c === 0x20 || c === 0x0A || c === 0x0D) return false
+      pos++
+    }
+    if (!found) return false
+    const content = src.slice(start + 1, pos)
+    if (!content.trim()) return false
+    if (!silent) {
+      const token = state.push('gzh_sub', 'sub', 0)
+      token.content = content
+    }
+    state.pos = pos + 1
+    return true
+  })
+
+  md.renderer.rules.gzh_sup = (tokens, idx) => `<sup class="gzh-sup">${tokens[idx].content}</sup>`
+  md.renderer.rules.gzh_sub = (tokens, idx) => `<sub class="gzh-sub">${tokens[idx].content}</sub>`
+}
+
+// ============================================================
+// :emoji: GitHub 风格短代码 → Unicode Emoji
+// ============================================================
+
+const EMOJI_MAP: Record<string, string> = {
+  smile: '😄', grin: '😁', laughing: '😆', blush: '😊', heart_eyes: '😍',
+  wink: '😉', thinking: '🤔', rofl: '🤣', sob: '😭', cry: '😢',
+  angry: '😠', rage: '😡', fearful: '😨', flushed: '😳', sleepy: '😴',
+  tired: '😫', mask: '😷', sunglasses: '😎', cool: '🆒', innocent: '😇',
+  star: '⭐', star2: '🌟', sparkles: '✨', fire: '🔥', heart: '❤️',
+  hearts: '💕', broken_heart: '💔', thumbsup: '👍', thumbsdown: '👎',
+  ok_hand: '👌', clap: '👏', raised_hands: '🙌', pray: '🙏', muscle: '💪',
+  tada: '🎉', rocket: '🚀', bulb: '💡', warning: '⚠️', bulb1: '💡',
+  check: '✅', x: '❌', question: '❓', exclamation: '❗', bell: '🔔',
+  book: '📚', memo: '📝', pencil: '✏️', bul: '🔵', eyes: '👀',
+  coffee: '☕', zap: '⚡', sun: '☀️', moon: '🌙', rainbow: '🌈',
+  bug: '🐛', robot: '🤖', computer: '💻', mobile: '📱', mail: '📧',
+  link: '🔗', lock: '🔒', unlock: '🔓', search: '🔍', settings: '⚙️',
+  clock: '⏰', calendar: '📅', chart: '📊', money: '💰', gift: '🎁',
+  flag: '🚩', location: '📍', warning_sign: '⚠️', white_check: '✅',
+  info: 'ℹ️', heavy_plus: '➕', heavy_minus: '➖', arrow_right: '➡️',
+  arrow_left: '⬅️', arrow_up: '⬆️', arrow_down: '⬇️', point_right: '👉',
+  point_left: '👈', point_up: '👆', point_down: '👇', hundred: '💯',
+  eyes_roll: '🙄', dizzy: '😵', hushed: '😯', open_mouth: '😮',
+  tongue: '😛', sweat: '😅', cold_sweat: '😰', relief: '😌',
+  kiss: '😘', cupid: '😘', smirk: '😏', unamused: '😒', disappointed: '😞',
+  pensive: '😔', confused: '😕', worried: '😟', frown: '😔',
+  grey_question: '❔', grey_exclamation: '❕', bangbang: '‼️',
+  heavy_exclamation: '❗', heavy_question: '❓', interrobang: '⁉️',
+  key: '🔑', wrench: '🔧', hammer: '🔨', gear: '⚙️', tools: '🛠️',
+  article: '📄', newspaper: '📰', page: '📄', books: '📚', notebook: '📓',
+  folder: '📁', file: '📄', package: '📦', truck: '🚚', ship: '🚢',
+  airplane: '✈️', car: '🚗', bus: '🚌', train: '🚆', bike: '🚲',
+  home: '🏠', building: '🏢', city: '🏙️', factory: '🏭', school: '🏫',
+  hospital: '🏥', bank: '🏦', store: '🏪', hotel: '🏨', park: '🏞️',
+  tree: '🌳', flower: '🌸', rose: '🌹', seedling: '🌱', leaf: '🍃',
+  apple: '🍎', banana: '🍌', grapes: '🍇', watermelon: '🍉',
+  pizza: '🍕', hamburger: '🍔', fries: '🍟', cake: '🍰', cookie: '🍪',
+  coffee2: '☕', tea: '🍵', beer: '🍺', wine: '🍷', cocktail: '🍸',
+  dog: '🐶', cat: '🐱', mouse: '🐭', rabbit: '🐰', bear: '🐻',
+  panda: '🐼', tiger: '🐯', lion: '🦁', elephant: '🐘', monkey: '🐵',
+  pig: '🐷', cow: '🐮', chicken: '🐔', fish: '🐟', whale: '🐳',
+  bug2: '🐛', butterfly: '🦋', honeybee: '🐝', snail: '🐌', octopus: '🐙',
+  earth: '🌍', moon2: '🌕', sun2: '🌞', comet: '☄️', star3: '⭐',
+  cloud: '☁️', rain: '🌧️', snow: '❄️', lightning: '⚡', umbrella: '☂️',
+  music: '🎵', note: '🎶', microphone: '🎤', headphone: '🎧', camera: '📷',
+  tv: '📺', phone: '📱', laptop: '💻', watch: '⌚', game: '🎮',
+  soccer: '⚽', basketball: '🏀', baseball: '⚾', football: '🏈', tennis: '🎾',
+  medal: '🏅', trophy: '🏆', crown: '👑', gem: '💎', moneybag: '💰',
+  dollar: '💵', yen: '💴', euro: '💶', pound: '💷', coin: '🪙'
+}
+
+function registerEmojiInline(md: MarkdownIt): void {
+  md.inline.ruler.after('emphasis', 'gzh_emoji', (state, silent) => {
+    const start = state.pos
+    const src = state.src
+    if (src.charCodeAt(start) !== 0x3A /* : */) return false
+
+    let pos = start + 1
+    let found = false
+    while (pos < src.length) {
+      const c = src.charCodeAt(pos)
+      if (c === 0x3A) { found = true; break }
+      // 短代码只允许字母、数字、下划线
+      if (!(/[a-zA-Z0-9_]/.test(src[pos]))) return false
+      pos++
+    }
+    if (!found) return false
+    const code = src.slice(start + 1, pos)
+    if (!code) return false
+    const emoji = EMOJI_MAP[code]
+    if (!emoji) return false
+    if (!silent) {
+      const token = state.push('text', '', 0)
+      token.content = emoji
+    }
+    state.pos = pos + 1
+    return true
+  })
+}
+
+// ============================================================
+// 数学公式：行内 $...$ 与块级 $$...$$
+// 解析为占位结构，由 index.ts 用 KaTeX 渲染
+// ============================================================
+
+function registerMathBlock(md: MarkdownIt): void {
+  // 块级 $$ ... $$
+  md.block.ruler.before('fence', 'gzh_math_block', (state, startLine, _endLine, silent) => {
+    const startPos = state.bMarks[startLine] + state.tShift[startLine]
+    const lineText = state.src.slice(startPos, state.eMarks[startLine])
+    if (!lineText.trim().startsWith('$$')) return false
+    if (silent) return true
+
+    // 多行：从 $$ 开始，到下一个 $$ 结束
+    let nextLine = startLine
+    let endLineFound = -1
+    let content = ''
+    if (lineText.trim() === '$$') {
+      // 需要找结束的 $$
+      nextLine = startLine + 1
+      while (nextLine < _endLine) {
+        const np = state.bMarks[nextLine] + state.tShift[nextLine]
+        const nt = state.src.slice(np, state.eMarks[nextLine])
+        if (nt.trim() === '$$') { endLineFound = nextLine; break }
+        content += state.src.slice(state.bMarks[nextLine], state.eMarks[nextLine]) + '\n'
+        nextLine++
+      }
+      if (endLineFound === -1) return false
+    } else {
+      // 单行 $$ ... $$
+      const rest = lineText.trim().slice(2)
+      const endIdx = rest.lastIndexOf('$$')
+      if (endIdx === -1) return false
+      content = rest.slice(0, endIdx)
+      endLineFound = startLine
+      nextLine = startLine + 1
+    }
+
+    const token = state.push('gzh_math_block', 'section', 0)
+    token.info = 'block'
+    token.content = content.trim()
+    token.map = [startLine, endLineFound]
+
+    state.line = nextLine
+    return true
+  })
+
+  md.renderer.rules.gzh_math_block = (tokens, idx) => {
+    const tex = (tokens[idx].content || '').replace(/"/g, '&quot;')
+    return `<section class="gzh-math-block" data-tex="${escapeAttr(tex)}"></section>\n`
+  }
+
+  // 行内 $ ... $
+  md.inline.ruler.after('escape', 'gzh_math_inline', (state, silent) => {
+    const start = state.pos
+    const src = state.src
+    if (src.charCodeAt(start) !== 0x24 /* $ */) return false
+    if (src.charCodeAt(start + 1) === 0x24) return false // 跳过 $$
+    let pos = start + 1
+    let found = false
+    while (pos < src.length) {
+      const c = src.charCodeAt(pos)
+      if (c === 0x24) { found = true; break }
+      if (c === 0x5C) { pos += 2; continue }
+      if (c === 0x0A || c === 0x0D) return false
+      pos++
+    }
+    if (!found) return false
+    const tex = src.slice(start + 1, pos)
+    if (!tex.trim()) return false
+    if (!silent) {
+      const token = state.push('gzh_math_inline', 'span', 0)
+      token.content = tex
+    }
+    state.pos = pos + 1
+    return true
+  })
+
+  md.renderer.rules.gzh_math_inline = (tokens, idx) => {
+    const tex = (tokens[idx].content || '').replace(/"/g, '&quot;')
+    return `<span class="gzh-math-inline" data-tex="${escapeAttr(tex)}"></span>`
+  }
+}
+
+// ============================================================
+// Mermaid 图表：```mermaid 代码块
+// 解析为占位结构，由 index.ts 用 mermaid 渲染为 SVG
+// ============================================================
+
+function registerMermaidBlock(md: MarkdownIt): void {
+  const defaultFence = md.renderer.rules.fence!.bind(md.renderer.rules)
+  md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+    const token = tokens[idx]
+    const lang = (token.info || '').trim().split(/\s+/)[0]
+    if (lang === 'mermaid') {
+      const code = token.content
+      return `<section class="gzh-mermaid" data-code="${escapeAttr(code)}"></section>\n`
+    }
+    return defaultFence(tokens, idx, options, env, self)
+  }
+}
+
+// ============================================================
+// 局部属性：{.class #id data-*} 追加到前一个块级元素
+// 记录到 token 的 attr，由 index.ts 后处理应用
+// ============================================================
+
+function registerAttributes(md: MarkdownIt): void {
+  md.inline.ruler.push('gzh_attributes', (state, silent) => {
+    const start = state.pos
+    const src = state.src
+    // 必须以 { 开头
+    if (src.charCodeAt(start) !== 0x7B /* { */) return false
+    // 属性只允许 .class #id data-*
+    const rest = src.slice(start)
+    const match = rest.match(/^\{([^{}]*)\}/)
+    if (!match) return false
+    const inner = match[1].trim()
+    if (!inner) return false
+    // 校验属性格式
+    const valid = /^(?:[.#][\w-]+|\s+data-[\w-]+(?:=[^\s}]*))*(?:\s+[.#][\w-]+|\s+data-[\w-]+(?:=[^\s}]*))*$/.test(inner)
+    if (!valid) return false
+    if (silent) return true
+
+    const token = state.push('gzh_attr', 'span', 0)
+    token.content = inner
+    token.markup = '{}'
+    state.pos = start + match[0].length
+    return true
+  })
+
+  md.renderer.rules.gzh_attr = (tokens, idx) => {
+    // 实际属性应用到前一个元素由 index.ts 的 applyAttributes 处理；
+    // 这里先输出一个隐藏标记，后处理时移除
+    return `<span class="gzh-attr-marker" data-attrs="${escapeAttr(tokens[idx].content)}" style="display:none"></span>`
   }
 }

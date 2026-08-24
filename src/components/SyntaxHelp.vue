@@ -49,8 +49,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted } from 'vue'
-import { gzhRender } from '../xumd-gzh-render'
+import { gzhRender, renderMermaidInHtml } from '../xumd-gzh-render'
 import { markComponentTypes, applyDarkMode } from '../utils/darkModePreview'
+import { ensureKatex } from '../utils/lib-loader'
 
 export interface SyntaxItem {
   id: string
@@ -76,6 +77,7 @@ const categories = [
   { id: 'card', name: '卡片组件' },
   { id: 'content', name: '内容组件' },
   { id: 'divider', name: '分割线' },
+  { id: 'ext', name: '扩展语法' },
   { id: 'special', name: '特殊标记' }
 ]
 
@@ -370,6 +372,107 @@ const syntaxItems: SyntaxItem[] = [
     syntax: ':::hr primary-dotted',
     sampleMd: ':::hr primary-dotted',
     insert: '\n:::hr primary-dotted\n'
+  },
+
+  // ========== 扩展语法（对齐 WeMD 文档） ==========
+  {
+    id: 'carousel',
+    name: '水平滑动图组',
+    category: 'ext',
+    desc: '适用于公众号中可左右滑动的多图展示，用逗号分隔多张图',
+    syntax: '<![描述1](图片1链接),![描述2](图片2链接),![描述3](图片3链接)>',
+    sampleMd: '<![封面](https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=400),![风景](https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=400),![美食](https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=400)>',
+    insert: '<![描述1](图片1链接),![描述2](图片2链接),![描述3](图片3链接)>\n'
+  },
+  {
+    id: 'math-inline',
+    name: '数学公式·行内',
+    category: 'ext',
+    desc: '用 $ 包裹的 LaTeX 行内公式，由 KaTeX 渲染',
+    syntax: '行内公式：$E = mc^2$',
+    sampleMd: '质能方程 $E = mc^2$ 是相对论的基石。',
+    insert: '行内公式：$E = mc^2$'
+  },
+  {
+    id: 'math-block',
+    name: '数学公式·块级',
+    category: 'ext',
+    desc: '用 $$ 包裹的 LaTeX 块级公式（支持多行），由 KaTeX 渲染',
+    syntax: '$$\n\\sum_{i=1}^{n} x_i = x_1 + x_2 + ... + x_n\n$$',
+    sampleMd: '$$\n\\sum_{i=1}^{n} x_i = x_1 + x_2 + \\dots + x_n\n$$',
+    insert: '$$\n\\sum_{i=1}^{n} x_i = x_1 + x_2 + \\dots + x_n\n$$\n'
+  },
+  {
+    id: 'mermaid',
+    name: 'Mermaid 图表',
+    category: 'ext',
+    desc: '支持流程图、时序图、甘特图等，由 Mermaid 渲染为 SVG',
+    syntax: '```mermaid\ngraph LR\n  A[开始] --> B{判断}\n  B -->|是| C[执行]\n  B -->|否| D[结束]\n```',
+    sampleMd: '```mermaid\ngraph LR\n  A[开始] --> B{判断}\n  B -->|是| C[执行]\n  B -->|否| D[结束]\n```',
+    insert: '```mermaid\ngraph LR\n  A[开始] --> B{判断}\n  B -->|是| C[执行]\n  B -->|否| D[结束]\n```\n'
+  },
+  {
+    id: 'github-alert',
+    name: 'GitHub 提示块',
+    category: 'ext',
+    desc: '支持 NOTE / TIP / IMPORTANT / WARNING / CAUTION 五种提示类型',
+    syntax: '> [!NOTE]\n> 背景信息或补充说明',
+    sampleMd: '> [!NOTE]\n> 背景信息或补充说明\n\n> [!TIP]\n> 有用的小技巧\n\n> [!WARNING]\n> 需要注意的问题',
+    insert: '> [!NOTE]\n> 背景信息或补充说明\n\n> [!TIP]\n> 有用的小技巧\n\n> [!WARNING]\n> 需要注意的问题\n'
+  },
+  {
+    id: 'task-list',
+    name: '任务列表',
+    category: 'ext',
+    desc: '带勾选框的待办列表，支持已完成 / 未完成状态',
+    syntax: '- [ ] 未完成任务\n- [x] 已完成任务',
+    sampleMd: '- [ ] 撰写大纲\n- [x] 收集素材\n- [ ] 定稿发布',
+    insert: '- [ ] 未完成任务\n- [x] 已完成任务\n'
+  },
+  {
+    id: 'underline',
+    name: '下划线（++xx++）',
+    category: 'content',
+    desc: '用 ++ 包裹的文本添加下划线，用于关键词标记',
+    syntax: '++下划线++',
+    sampleMd: '这是一段++下划线++文字示例',
+    insert: '++下划线++'
+  },
+  {
+    id: 'sup',
+    name: '上标（^x^）',
+    category: 'content',
+    desc: '用 ^ 包裹的文本作为上标，如 H^2^O',
+    syntax: 'X^2^',
+    sampleMd: '水的化学式 H^2^O，平方 X^2^ 示例',
+    insert: 'X^2^'
+  },
+  {
+    id: 'sub',
+    name: '下标（~x~）',
+    category: 'content',
+    desc: '用 ~ 包裹的文本作为下标，如 H~2~O',
+    syntax: 'H~2~O',
+    sampleMd: '二氧化碳的化学式是 H~2~O 不对，应是 CO~2~',
+    insert: 'H~2~O'
+  },
+  {
+    id: 'emoji',
+    name: 'Emoji 表情',
+    category: 'content',
+    desc: 'GitHub 风格 Emoji 短代码，自动转为对应表情',
+    syntax: ':smile: :heart: :thumbsup:',
+    sampleMd: '支持表情 :smile: :heart: :thumbsup: :rocket: :tada:',
+    insert: ':smile: :heart: :thumbsup:'
+  },
+  {
+    id: 'attr',
+    name: '局部属性',
+    category: 'special',
+    desc: '在块级元素后追加 {.class #id data-*=value} 自定义样式（仅允许 class / id / data-*）',
+    syntax: '## 本章摘要 {.chapter-title #chapter-summary}',
+    sampleMd: '## 本章摘要 {.summary}\n\n本段通过局部属性自定义样式。',
+    insert: ' {.class #id}'
   }
 ]
 
@@ -389,28 +492,30 @@ const filteredItems = computed(() => {
 })
 
 // 渲染所有组件的预览
-function renderPreviews(): void {
+async function renderPreviews(): Promise<void> {
   const themeId = props.themeId || 'moyu-green'
+  await ensureKatex()
 
-  nextTick(() => {
-    filteredItems.value.forEach(item => {
+  nextTick(async () => {
+    for (const item of filteredItems.value) {
       const el = document.getElementById('help-preview-' + item.id)
-      if (el) {
-        const result = gzhRender(item.sampleMd, {
-          themeId,
-          customColorEnabled: false,
-          authorName: ''
-        })
-        // 使用全内联样式版本，确保每个预览独立、与实际渲染完全一致
-        el.innerHTML = result.copyOutputHtml
-        // 标记组件类型并保存原始样式
-        markComponentTypes(el as HTMLElement)
-        // 如果当前是深色模式，立即应用深色样式
-        if (props.isDark) {
-          applyDarkMode(el as HTMLElement, true)
-        }
+      if (!el) continue
+      const result = gzhRender(item.sampleMd, {
+        themeId,
+        customColorEnabled: false,
+        authorName: ''
+      })
+      // 使用全内联样式版本，确保每个预览独立、与实际渲染完全一致
+      let html = result.copyOutputHtml
+      html = await renderMermaidInHtml(html)
+      el.innerHTML = html
+      // 标记组件类型并保存原始样式
+      markComponentTypes(el as HTMLElement)
+      // 如果当前是深色模式，立即应用深色样式
+      if (props.isDark) {
+        applyDarkMode(el as HTMLElement, true)
       }
-    })
+    }
   })
 }
 

@@ -19,13 +19,38 @@ import { deriveTokens } from './color-derive'
 import { inlineCss, generatePreviewCss } from './css-inline-browser'
 import { getTheme } from './themes'
 import { renderTemplate } from './template-parser'
+import { ensureMermaid } from '../utils/lib-loader'
 
 import type { RenderConfig, RenderResult, ThemeTokens, ThemeStructure, ComponentTemplates } from './types'
+
+// 用于渲染 GitHub 提示块正文的独立 markdown-it 实例（复用自定义语法插件）
+// 仅负责把提示块内部 markdown 源码渲染为中间 HTML，再由外层主题模板包裹
+const fragmentMd = new MarkdownIt({
+  html: true,
+  linkify: true,
+  breaks: false,
+  typographer: false
+})
+gzhMdPlugin(fragmentMd)
+
+// GitHub 提示块配色（按类型区分，独立于主题，保证清晰可辨）
+const ALERT_COLORS: Record<string, { color: string; bg: string }> = {
+  NOTE: { color: '#2563eb', bg: '#eff6ff' },
+  TIP: { color: '#059669', bg: '#ecfdf5' },
+  IMPORTANT: { color: '#7c3aed', bg: '#f5f3ff' },
+  WARNING: { color: '#d97706', bg: '#fffbeb' },
+  CAUTION: { color: '#dc2626', bg: '#fef2f2' }
+}
+
+// 模块级：当前渲染配置与统计（供递归渲染 GitHub 提示块正文时使用）
+let activeConfig: RenderConfig = { themeId: 'moyu-green', customColorEnabled: false }
+let activeStats: { charCount: string; readTime: string } = { charCount: '', readTime: '' }
 
 // 导出所有类型和工具
 export * from './types'
 export { getTheme, getThemeList, themes } from './themes'
 export { deriveTokens } from './color-derive'
+export { convertBase64ImagesForGzh }
 
 /**
  * 公众号 Markdown 渲染入口函数
@@ -65,6 +90,8 @@ export function gzhRender(mdSource: string, config: RenderConfig): RenderResult 
   const stats = calculateStatsFromMarkdown(mdSource)
 
   // 5. Markdown → 中间 HTML（带 class 标记）
+  activeConfig = config
+  activeStats = stats
   const rawHtml = md.render(mdSource)
 
   // 6. DOM 后处理：用主题组件替换标准标签
@@ -253,6 +280,27 @@ function applyThemeStructure(
         el.getAttribute('data-text') || ''
       )
     }
+    if (el.classList.contains('gzh-carousel')) {
+      replaceCarousel(el, components, tokens, structure)
+    }
+    if (el.classList.contains('gzh-github-alert')) {
+      replaceGithubAlert(el, components, tokens, structure)
+    }
+    if (el.classList.contains('gzh-task-item')) {
+      replaceTaskItem(el, components, tokens, structure)
+    }
+    if (el.classList.contains('gzh-underline')) {
+      replaceUnderline(el, components, tokens, structure)
+    }
+    if (el.classList.contains('gzh-math-block') || el.classList.contains('gzh-math-inline')) {
+      replaceMath(el, components, tokens, structure)
+    }
+    if (el.classList.contains('gzh-mermaid')) {
+      replaceMermaid(el, components, tokens, structure)
+    }
+    if (el.classList.contains('gzh-attr-marker')) {
+      replaceAttrMarker(el, doc)
+    }
   }
 
   processNode(root)
@@ -424,13 +472,15 @@ function replaceUl(
     if (child.tagName.toLowerCase() === 'li') {
       const content = child.innerHTML.trim()
       // 嵌套列表已由递归 processNode 先行渲染为 <section>，
-      // 需要给这些代表子列表项的 section 加缩进，体现层级关系
-      const indentedContent = indentNestedListItems(content)
-      items.push(renderTemplate(components.unorderedListItem, {
+      // 把 section 提取出来作为独立列表项跟在父项后面，避免被包进 pill 背景里
+      const { text, sectionsHtml } = extractNestedSections(content)
+      const indentedSections = indentNestedListItems(sectionsHtml)
+      const itemHtml = renderTemplate(components.unorderedListItem, {
         tokens,
         structure,
-        vars: { content: indentedContent }
-      }))
+        vars: { content: text }
+      })
+      items.push(itemHtml + indentedSections)
     }
   })
   replaceWith(el, items.join(''))
@@ -450,19 +500,56 @@ function replaceOl(
     if (child.tagName.toLowerCase() === 'li') {
       const content = child.innerHTML.trim()
       // 嵌套列表已由递归 processNode 先行渲染为 <section>，
-      // 需要给这些代表子列表项的 section 加缩进，体现层级关系
-      const indentedContent = indentNestedListItems(content)
-      items.push(renderTemplate(components.orderedListItem, {
+      // 把 section 提取出来作为独立列表项跟在父项后面，避免被包进父项结构中
+      const { text, sectionsHtml } = extractNestedSections(content)
+      const indentedSections = indentNestedListItems(sectionsHtml)
+      const itemHtml = renderTemplate(components.orderedListItem, {
         tokens,
         structure,
         vars: {
-          content: indentedContent,
+          content: text,
           index: String(++idx).padStart(2, '0')
         }
-      }))
+      })
+      items.push(itemHtml + indentedSections)
     }
   })
   replaceWith(el, items.join(''))
+}
+
+/**
+ * 从列表项内容中分离出文本（含行内元素）和嵌套子列表 <section>
+ *
+ * processNode 递归处理子节点后，嵌套 <ul>/<ol> 已经被替换成若干 <section>。
+ * 如果不把它们提取为独立兄弟元素，section 会被包进父项的 inline-block pill 背景里，
+ * 导致编辑器预览中嵌套项和父项共享同一个胶囊背景。
+ */
+function extractNestedSections(contentHtml: string): { text: string; sectionsHtml: string } {
+  if (!contentHtml || !contentHtml.includes('<section')) {
+    return { text: contentHtml, sectionsHtml: '' }
+  }
+
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(`<div id="xumd-extract">${contentHtml}</div>`, 'text/html')
+  const wrapper = doc.getElementById('xumd-extract')
+  if (!wrapper) return { text: contentHtml, sectionsHtml: '' }
+
+  let text = ''
+  const sections: string[] = []
+  Array.from(wrapper.childNodes).forEach(node => {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node as HTMLElement
+      if (el.tagName.toLowerCase() === 'section') {
+        sections.push(el.outerHTML)
+      } else {
+        text += el.outerHTML
+      }
+    } else if (node.nodeType === Node.TEXT_NODE) {
+      text += node.textContent || ''
+    }
+  })
+
+  return { text: text.trim(), sectionsHtml: sections.join('') }
 }
 
 /**
@@ -482,14 +569,27 @@ function indentNestedListItems(contentHtml: string): string {
   const wrapper = doc.getElementById('xumd-indent')
   if (!wrapper) return contentHtml
 
+  // 移除 Markdown 换行/插件可能产生的空段落，避免嵌套列表后出现空行
+  Array.from(wrapper.children).forEach(child => {
+    if (child.tagName.toLowerCase() === 'p' && (child.textContent || '').trim() === '') {
+      child.remove()
+    }
+  })
+
   // 给内容中顶层（直接子元素）的 section 加缩进
   // 这些 section 是嵌套列表被 replaceUl/replaceOl 替换后的产物
-  Array.from(wrapper.children).forEach(child => {
-    if (child.tagName.toLowerCase() === 'section') {
-      const existing = child.getAttribute('style') || ''
-      const separator = existing && !existing.endsWith(';') ? ';' : ''
-      child.setAttribute('style', `${existing}${separator}padding-left:20px;margin-top:8px;`)
-    }
+  const sections = Array.from(wrapper.children).filter(
+    child => child.tagName.toLowerCase() === 'section'
+  ) as HTMLElement[]
+
+  sections.forEach((child) => {
+    const existing = child.getAttribute('style') || ''
+    const separator = existing && !existing.endsWith(';') ? ';' : ''
+    // 保持嵌套列表项本身的 margin-bottom（来自模板），确保与普通列表项间距一致
+    child.setAttribute(
+      'style',
+      `${existing}${separator}padding-left:20px;margin-top:8px;`
+    )
   })
 
   return wrapper.innerHTML
@@ -1059,6 +1159,257 @@ function escapeHtml(text: string): string {
   return div.innerHTML
 }
 
+// ============================================================
+// 水平滑动图组
+// ============================================================
+function replaceCarousel(
+  el: HTMLElement,
+  components: ComponentTemplates,
+  tokens: ThemeTokens,
+  _structure: ThemeStructure
+): void {
+  let images: Array<{ alt: string; url: string }> = []
+  try {
+    const raw = el.getAttribute('data-images')
+    if (raw) images = JSON.parse(decodeURIComponent(raw))
+  } catch { /* ignore */ }
+
+  const slidesHtml = images.map(img => {
+    const tpl = components.carouselItem || components.image
+    return renderTemplate(tpl, {
+      tokens,
+      vars: {
+        src: escapeHtml(img.url),
+        alt: escapeHtml(img.alt)
+      }
+    })
+  }).join('')
+
+  const html = renderTemplate(components.carousel, {
+    tokens,
+    vars: {
+      slides: slidesHtml,
+      count: String(images.length)
+    }
+  })
+  replaceWith(el, html)
+}
+
+// ============================================================
+// GitHub 提示块
+// ============================================================
+const ALERT_TITLE_DEFAULT: Record<string, string> = {
+  NOTE: '📝 备注',
+  TIP: '💡 提示',
+  IMPORTANT: '⚠️ 重要',
+  WARNING: '⚠️ 警告',
+  CAUTION: '🚨 注意'
+}
+
+function replaceGithubAlert(
+  el: HTMLElement,
+  components: ComponentTemplates,
+  tokens: ThemeTokens,
+  _structure: ThemeStructure
+): void {
+  const type = el.getAttribute('data-type') || 'NOTE'
+  const title = el.getAttribute('data-title') || ALERT_TITLE_DEFAULT[type] || '备注'
+  const bodyRaw = el.getAttribute('data-body') || ''
+
+  // 渲染正文 markdown 为中间 HTML，再套主题模板
+  let bodyHtml = ''
+  if (bodyRaw.trim()) {
+    const inner = fragmentMd.render(decodeURIComponent(bodyRaw))
+    // 对正文再做一次主题结构应用（处理其中的高亮/加粗等），复用当前渲染配置
+    bodyHtml = applyThemeStructure(inner, _structure, tokens, activeConfig, activeStats)
+  }
+
+  const colorSet = ALERT_COLORS[type] || ALERT_COLORS.NOTE
+  const html = renderTemplate(components.githubAlert, {
+    tokens,
+    vars: {
+      type: escapeHtml(type),
+      title: escapeHtml(title),
+      body: bodyHtml,
+      alertColor: colorSet.color,
+      alertBg: colorSet.bg
+    }
+  })
+  replaceWith(el, html)
+}
+
+// ============================================================
+// 任务列表项
+// ============================================================
+function replaceTaskItem(
+  el: HTMLElement,
+  components: ComponentTemplates,
+  tokens: ThemeTokens,
+  _structure: ThemeStructure
+): void {
+  const checked = el.getAttribute('data-checked') === 'true'
+  const text = el.textContent || ''
+  // 用普通变量传入完整样式（template-parser 不支持条件语法）
+  const checkboxStyle = checked
+    ? `background:${tokens.primary};color:#fff;`
+    : `border:2px solid ${tokens.dividerColor};color:transparent;`
+  const checkboxMark = checked ? '✓' : '·'
+  const textStyle = checked
+    ? `text-decoration:line-through;color:${tokens.subTextColor};`
+    : ''
+  const html = renderTemplate(components.taskItem, {
+    tokens,
+    vars: {
+      checkboxStyle,
+      checkboxMark,
+      textStyle,
+      text: escapeHtml(text)
+    }
+  })
+  replaceWith(el, html)
+}
+
+// ============================================================
+// 下划线 ++xx++
+// ============================================================
+function replaceUnderline(
+  el: HTMLElement,
+  components: ComponentTemplates,
+  tokens: ThemeTokens,
+  _structure: ThemeStructure
+): void {
+  const content = el.textContent || ''
+  const html = renderTemplate(components.inlineUnderline, {
+    tokens,
+    vars: { content: escapeHtml(content) }
+  })
+  replaceWith(el, html)
+}
+
+// ============================================================
+// 数学公式（KaTeX，同步渲染）
+// ============================================================
+
+function replaceMath(
+  el: HTMLElement,
+  components: ComponentTemplates,
+  tokens: ThemeTokens,
+  _structure: ThemeStructure
+): void {
+  const tex = (el.getAttribute('data-tex') || '').replace(/&quot;/g, '"')
+  const isBlock = el.classList.contains('gzh-math-block')
+
+  let katexOut = ''
+  const katexLib = (window as unknown as { katex?: typeof import('katex') }).katex
+  if (katexLib) {
+    try {
+      katexOut = katexLib.renderToString(tex, {
+        displayMode: isBlock,
+        throwOnError: false,
+        output: 'html'
+      })
+    } catch {
+      katexOut = ''
+    }
+  }
+  if (!katexOut) {
+    // 公式库未加载（离线/CDN 失败）：降级为等宽源码
+    katexOut = `<code style="background:#f3f4f6;padding:2px 6px;border-radius:4px;font-family:monospace;white-space:pre-wrap;">${escapeHtml(tex)}</code>`
+  }
+
+  const html = renderTemplate(isBlock ? components.mathBlock : components.mathInline, {
+    tokens,
+    vars: { katexOut, tex: escapeHtml(tex) }
+  })
+  replaceWith(el, html)
+}
+
+// ============================================================
+// Mermaid 图表（异步渲染，由外部 postProcessMermaid 完成 SVG 注入）
+// ============================================================
+
+function replaceMermaid(
+  el: HTMLElement,
+  components: ComponentTemplates,
+  tokens: ThemeTokens,
+  _structure: ThemeStructure
+): void {
+  const code = (el.getAttribute('data-code') || '').replace(/&quot;/g, '"')
+  const html = renderTemplate(components.mermaid, {
+    tokens,
+    vars: { svgOut: `<p style="color:${tokens.subTextColor};font-size:13px;margin:0;">图表渲染中…</p>`, code: escapeHtml(code) }
+  })
+  replaceWith(el, html)
+}
+
+/**
+ * 异步后处理：把 HTML 中的 .gzh-mermaid 占位节点替换为 mermaid 渲染的 SVG。
+ * 在浏览器环境（真实 document 存在）下调用。preview 与 copy 两套 HTML 都需调用。
+ */
+let mermaidInited = false
+export async function renderMermaidInHtml(html: string): Promise<string> {
+  const hasMermaid = /class="gzh-mermaid"/.test(html)
+  if (!hasMermaid) return html
+
+  try {
+    const mermaid = await ensureMermaid()
+    if (!mermaidInited) {
+      mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' })
+      mermaidInited = true
+    }
+
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<div id="xumd-mermaid">${html}</div>`, 'text/html')
+    const root = doc.getElementById('xumd-mermaid')
+    if (!root) return html
+
+    const nodes = Array.from(root.querySelectorAll('.gzh-mermaid')) as HTMLElement[]
+    let idx = 0
+    for (const node of nodes) {
+      const code = (node.getAttribute('data-code') || '').replace(/&quot;/g, '"')
+      if (!code.trim()) continue
+      try {
+        const id = `xumd-mm-${Date.now()}-${idx++}`
+        const renderResult = await mermaid.render(id, code) as unknown as { svg: string }
+        node.outerHTML = renderResult.svg
+      } catch {
+        // 渲染失败保留提示
+      }
+    }
+    return root.innerHTML
+  } catch {
+    return html
+  }
+}
+
+// ============================================================
+// 局部属性标记：将属性应用到前一个兄弟块级元素
+// ============================================================
+function replaceAttrMarker(el: HTMLElement, _doc: Document): void {
+  const attrs = el.getAttribute('data-attrs') || ''
+  const prev = el.previousElementSibling
+  if (prev && attrs) {
+    const classMatch = attrs.match(/\.([\w-]+)/g)
+    const idMatch = attrs.match(/#([\w-]+)/)
+    const dataMatches = attrs.matchAll(/\s+data-([\w-]+)(?:=([^\s}]*))?/g)
+    if (classMatch) {
+      classMatch.forEach(c => {
+        const cls = c.slice(1)
+        if (cls) prev.classList.add(cls)
+      })
+    }
+    if (idMatch) {
+      prev.setAttribute('id', idMatch[1])
+    }
+    for (const dm of dataMatches) {
+      const name = dm[1]
+      const val = dm[2] !== undefined ? dm[2] : ''
+      prev.setAttribute(`data-${name}`, val)
+    }
+  }
+  el.remove()
+}
+
 /**
  * 清理所有 <span leaf=""> 包裹，释放内部文本/元素
  *
@@ -1136,6 +1487,54 @@ function domDepth(el: Element): number {
   let p = el.parentElement
   while (p) { d++; p = p.parentElement }
   return d
+}
+
+/**
+ * 把复制输出里的本地 Base64 图片替换为「公众号可替换的占位图片」。
+ *
+ * 公众号编辑器会剥离内联 Base64 图片，导致粘贴后整张图消失、无法操作。
+ * 这里在「复制到公众号」这一步（仅作用于 copyOutputHtml，不影响编辑器预览）
+ * 把所有 src="data:image/..." 的 <img> 的 src 替换成公网可访问的占位图片 URL，
+ * 让微信编辑器把它当作正常图片下载、转存到微信图库，从而支持「替换图片」。
+ *
+ * 占位图带中文提示文字，且保留原图片的居中 / 圆角 / 间距等外层样式。
+ */
+function convertBase64ImagesForGzh(html: string): string {
+  if (!html || !html.includes('data:image')) return html
+
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(`<div id="xumd-base64">${html}</div>`, 'text/html')
+  const root = doc.getElementById('xumd-base64')
+  if (!root) return html
+
+  // SVG 占位图：不依赖外部图床，在微信内直接以 data URI 形式嵌入，
+  // 避免 placehold.co 等外部服务被屏蔽导致图片不显示。
+  // 800×600 比例，灰底 + "点击替换图片" 提示文字。
+  const PLACEHOLDER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><rect width="800" height="600" fill="#e5e7eb"/><text x="400" y="300" font-family="sans-serif" font-size="40" fill="#374151" text-anchor="middle" dominant-baseline="middle">点击替换图片</text></svg>`
+  const PLACEHOLDER_IMG = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(PLACEHOLDER_SVG)}`
+
+  // 找出所有 Base64 图片
+  const imgs = Array.from(root.querySelectorAll('img')).filter(img =>
+    (img.getAttribute('src') || '').startsWith('data:image')
+  )
+
+  imgs.forEach(img => {
+    img.setAttribute('src', PLACEHOLDER_IMG)
+    img.setAttribute('alt', '点击替换图片（原图为本地图片，公众号无法显示）')
+    img.setAttribute('title', '点击替换图片')
+    img.setAttribute('data-xumd-replaced', '1')
+
+    // 保持原有 display 与最大宽度，让占位图在公众号内沿用原布局
+    const style = img.getAttribute('style') || ''
+    if (!style.includes('width')) {
+      img.setAttribute(
+        'style',
+        [style, 'width:100%;max-width:800px;height:auto'].filter(Boolean).join(';')
+      )
+    }
+  })
+
+  return root.innerHTML
 }
 
 /**

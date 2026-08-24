@@ -2,15 +2,18 @@
  * 图片上传组合式函数
  *
  * 说明：
- * 本项目为纯前端离线 Web，无后端，因此图片处理方式为：
- * 1. 读取本地图片文件
- * 2. 转为 base64 Data URL 插入 Markdown
- * 3. 可选：压缩图片（限制尺寸和质量）
+ * 本项目为纯前端离线 Web，无后端。
+ * - 图床为 local：读取本地图片 → 压缩 → 以 Base64 嵌入 Markdown（离线可用）。
+ * - 图床为 imgbb / smms：压缩后先上传图床拿到公网直链再插入 Markdown。
  *
- * 注意：公众号支持 base64 图片粘贴，因此可以正常显示。
+ * 为什么非 local 时要上传外链？
+ * 微信公众号编辑器**不支持 base64 内联图片**（粘贴会被剥离，连"替换图片"入口都没有）；
+ * 同时公众号的"替换图片"功能只对可公网访问的外链图片有效。因此只有把本地图换成
+ * 图床外链，复制到公众号后才能正常显示、并能在公众号里直接替换。
  */
 
 import { ref } from 'vue'
+import { useImageHost } from './useImageHost'
 
 export interface ImageUploadOptions {
   /** 最大宽度（px），超过则等比压缩 */
@@ -31,8 +34,15 @@ export function useImageUpload() {
     outputFormat: 'original'
   }
 
+  const { upload, imageHostType } = useImageHost()
+
   /**
    * 处理文件选择，返回 Markdown 图片语法字符串
+   *
+   * - 图床为 local：压缩后以 Base64 内联（离线可用）。
+   * - 图床为 imgbb / smms：压缩后上传图床拿外链再插入，
+   *   保证复制到公众号后图片可显示且可被"替换图片"功能替换。
+   * - 上传失败：回退 Base64 并在 uploadError 中提示，图片不丢。
    */
   async function handleFiles(
     files: FileList | File[],
@@ -44,6 +54,7 @@ export function useImageUpload() {
 
     const fileArray = Array.from(files)
     const results: string[] = []
+    let fallbackToBase64 = false
 
     try {
       for (const file of fileArray) {
@@ -53,8 +64,25 @@ export function useImageUpload() {
         }
 
         const dataUrl = await processImage(file, opts)
-        const mdSyntax = `![${file.name}](${dataUrl})`
+
+        // 仅当使用图床时才上传；local 直接内联 base64
+        let finalUrl = dataUrl
+        if (imageHostType.value !== 'local') {
+          const r = await upload(dataUrl, file.name || 'image.png')
+          finalUrl = r.url
+          if (!r.uploaded) {
+            fallbackToBase64 = true
+            console.warn('[XuMD] 图床上传失败，回退 Base64:', r.error)
+          }
+        }
+
+        const mdSyntax = `![${file.name}](${finalUrl})`
         results.push(mdSyntax)
+      }
+
+      if (fallbackToBase64) {
+        uploadError.value =
+          '部分图片图床上传失败，已回退为本地图片（复制到公众号可能无法显示/替换，请检查图床配置或网络）'
       }
     } catch (e) {
       uploadError.value = e instanceof Error ? e.message : '图片处理失败'

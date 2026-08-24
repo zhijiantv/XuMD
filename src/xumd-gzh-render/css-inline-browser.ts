@@ -213,6 +213,32 @@ export function generatePreviewCss(tokens: ThemeTokens): string {
 .gzh-marker {
   display: none;
 }
+/* 水平滑动图组：预览区横向滚动，与公众号效果一致 */
+.xumd-carousel {
+  max-width: 100%;
+  margin: 0 0 24px;
+}
+.xumd-carousel > section {
+  overflow-x: scroll;
+  -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
+  width: 100%;
+  font-size: 0;
+}
+.xumd-carousel > section > section {
+  display: inline-block;
+  width: 48%;
+  margin-right: 2%;
+  white-space: normal;
+  vertical-align: top;
+}
+.xumd-carousel img {
+  width: 100% !important;
+  max-width: none !important;
+  height: auto !important;
+  border-radius: 12px;
+  display: block;
+}
 /* 预览容器适配 */
 .xumd-preview-wrapper {
   max-width: 677px;

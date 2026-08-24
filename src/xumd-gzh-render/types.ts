@@ -183,8 +183,28 @@ export interface ComponentTemplates {
   pillTag: string
 
   /** 时间线 */
-  timeline?: string
-  timelineItem?: string
+  timeline: string
+  timelineItem: string
+
+  /** 水平滑动图组 */
+  carousel: string
+  carouselItem: string
+
+  /** GitHub 风格提示块（5 种统一模板，颜色按 type 区分） */
+  githubAlert: string
+
+  /** 任务列表项 */
+  taskItem: string
+
+  /** 下划线（++xx++） */
+  underline: string
+
+  /** 数学公式块 / 行内公式 */
+  mathBlock: string
+  mathInline: string
+
+  /** Mermaid 图表 */
+  mermaid: string
 }
 
 /**

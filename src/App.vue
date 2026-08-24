@@ -176,9 +176,12 @@ import { useMobileView } from './composables/useMobileView'
 import {
   gzhRender,
   getTheme,
-  deriveTokens
+  deriveTokens,
+  renderMermaidInHtml,
+  convertBase64ImagesForGzh
 } from './xumd-gzh-render'
 import type { RenderConfig, ThemeTokens, RenderResult } from './xumd-gzh-render'
+import { ensureKatex } from './utils/lib-loader'
 
 // ============================================================
 // 响应式状态
@@ -496,7 +499,7 @@ function scheduleRender(): void {
   }, 200)
 }
 
-function doRender(): void {
+async function doRender(): Promise<void> {
   try {
     const renderConfig: RenderConfig = {
       themeId: themeId.value,
@@ -511,9 +514,18 @@ function doRender(): void {
       mobileCompat: isMobile.value
     }
 
+    // 确保公式库（KaTeX）已加载，渲染时方可同步输出公式 HTML
+    await ensureKatex()
+
     const result: RenderResult = gzhRender(mdContent.value, renderConfig)
-    previewHtml.value = result.previewHtml
-    copyOutputHtml.value = result.copyOutputHtml
+
+    // Mermaid 图表需浏览器端异步渲染为 SVG（preview 与 copy 各处理一份）
+    const [previewRendered, copyRendered] = await Promise.all([
+      renderMermaidInHtml(result.previewHtml),
+      renderMermaidInHtml(result.copyOutputHtml)
+    ])
+    previewHtml.value = previewRendered
+    copyOutputHtml.value = copyRendered
 
     // 更新 tokens（用于预览样式）
     const theme = getTheme(themeId.value)
@@ -765,8 +777,11 @@ async function onCopyHtml(): Promise<void> {
 // 复制富文本（复制到公众号）
 async function onCopyRichText(): Promise<void> {
   if (!copyOutputHtml.value) return
+  // 本地 Base64 图片公众号无法显示，复制前转为「可替换占位块」，
+  // 让用户在公众号里即便原图不显示也能直接点击替换图片。
+  const gzhHtml = convertBase64ImagesForGzh(copyOutputHtml.value)
   try {
-    await copyHtmlToClipboard(copyOutputHtml.value)
+    await copyHtmlToClipboard(gzhHtml)
     showToast('已复制，可粘贴到公众号', 'success')
     showTempStatus('✓ 已复制，可粘贴到公众号')
   } catch {

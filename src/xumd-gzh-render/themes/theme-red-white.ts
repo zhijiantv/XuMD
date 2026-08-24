@@ -249,21 +249,16 @@ export const redWhite: Theme = {
       tableRow: `<tr>{{cells}}</tr>`,
 
       // 有序列表
-      orderedListItem: `<section style="display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;">
-  <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:{{token.primary}};color:#fff;font-size:11px;font-weight:700;border-radius:4px;flex-shrink:0;margin-top:2px;"><span leaf="">{{index}}</span></span>
-  <p style="font-size:14px;color:{{token.textColor}};margin:0;line-height:1.8;flex:1;">
-    <span leaf="">{{content}}</span>
-  </p>
-</section>`,
+      orderedListItem: `<section style="margin-bottom:12px;"><span style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;font-size:11px;font-weight:700;color:#fff;background:{{token.primary}};border-radius:4px;margin-right:10px;vertical-align:top;"><span leaf="">{{index}}</span></span><span style="display:inline-block;font-size:14px;color:{{token.textColor}};line-height:1.8;vertical-align:top;"><span leaf="">{{content}}</span></span></section>`,
 
       // 无序列表
       unorderedListItem: `<section style="margin-bottom:14px;">
-  <p style="margin:0 0 6px;">
+  <div style="margin:0 0 6px;">
     <span style="display:inline-block;font-size:14px;color:{{token.textColor}};line-height:1.8;">
       <span style="display:inline-block;width:6px;height:6px;background:{{token.primary}};border-radius:50%;margin-right:8px;vertical-align:middle;"><span leaf=""><br></span></span>
       <span leaf="">{{content}}</span>
     </span>
-  </p>
+  </div>
 </section>`,
 
       // 分割线（多种样式，颜色跟随主题）
@@ -368,7 +363,52 @@ export const redWhite: Theme = {
       <span leaf="">{{text}}</span>
     </p>
   </section>
-</section>`
+</section>`,
+
+      // ===== 以下为 wemd 扩展语法组件（水平滑动图组 / GitHub 提示块 / 任务列表 / 下划线 / 数学公式 / Mermaid） =====
+
+      // 水平滑动图组
+      carousel: `<section class="xumd-carousel" style="margin:0 auto 24px;">
+  <section style="overflow-x:scroll;-webkit-overflow-scrolling:touch;white-space:nowrap;width:100%;font-size:0;">
+    {{slides}}
+  </section>
+  <p style="text-align:center;font-size:12px;color:{{token.subTextColor}};margin:8px 0 0;">
+    <span leaf="">← 左右滑（共 {{count}} 张）→</span>
+  </p>
+</section>`,
+
+      // 水平滑动图组单张
+      carouselItem: `<section style="display:inline-block;width:48%;margin-right:2%;white-space:normal;vertical-align:top;">
+  <img src="{{src}}" alt="{{alt}}" style="width:100%;height:auto;display:block;border-radius:12px;" />
+  <p style="font-size:12px;color:{{token.subTextColor}};margin:6px 0 0;text-align:center;">
+    <span leaf="">{{alt}}</span>
+  </p>
+</section>`,
+
+      // GitHub 风格提示块（颜色按 type 由渲染逻辑注入 alertColor / alertBg）
+      githubAlert: `<section style="margin:0 0 20px;padding:14px 16px;border-radius:10px;border-left:4px solid {{alertColor}};background:{{alertBg}};">
+  <p style="margin:0 0 8px;font-size:14px;font-weight:800;color:{{alertColor}};">
+    <span leaf="">{{title}}</span>
+  </p>
+  <div style="font-size:14px;color:{{token.textColor}};line-height:1.7;">{{body}}</div>
+</section>`,
+
+      // 任务列表项
+      taskItem: `<p style="margin:0 0 10px;display:flex;align-items:flex-start;font-size:14px;color:{{token.textColor}};line-height:1.7;">
+  <span style="flex-shrink:0;width:18px;height:18px;margin-right:8px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;{{checkboxStyle}}">{{checkboxMark}}</span>
+  <span style="{{textStyle}}"><span leaf="">{{text}}</span></span>
+</p>`,
+
+      // 下划线 ++xx++（与主题 underlineColor 一致）
+      underline: `<span style="border-bottom:2px solid {{token.underlineColor}};padding-bottom:1px;">{{content}}</span>`,
+
+      // 数学公式（块级 / 行内）— katexOut 由 KaTeX 渲染注入
+      mathBlock: `<section style="margin:16px 0;text-align:center;overflow-x:auto;">{{katexOut}}</section>`,
+      mathInline: `<span style="display:inline-block;vertical-align:middle;">{{katexOut}}</span>`,
+
+      // Mermaid 图表 — svgOut 由 mermaid 渲染注入
+      mermaid: `<section style="margin:16px 0;text-align:center;">{{svgOut}}</section>`
+
     }
   },
 

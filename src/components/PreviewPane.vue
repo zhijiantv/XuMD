@@ -257,16 +257,46 @@ defineExpose({
   overflow: visible;
 }
 
-/* 确保内部 section 不超出宽度 */
-.preview-content :deep(section) {
+/* 确保内部 section 不超出宽度（水平滑动图组除外） */
+.preview-content :deep(section:not(.xumd-carousel)) {
   max-width: 100% !important;
 }
 
-/* 图片自适应 */
+/* 图片自适应（水平滑动图组除外） */
 .preview-content :deep(img) {
   max-width: 100% !important;
   height: auto !important;
   display: block;
+}
+
+/* 水平滑动图组：预览区横向滚动，与公众号效果一致 */
+.preview-content :deep(.xumd-carousel) {
+  max-width: 100% !important;
+  margin: 0 0 24px !important;
+}
+.preview-content :deep(.xumd-carousel > section) {
+  overflow-x: scroll;
+  -webkit-overflow-scrolling: touch;
+  white-space: nowrap;
+  width: 100%;
+  font-size: 0;
+}
+.preview-content :deep(.xumd-carousel > section > section) {
+  display: inline-block;
+  width: 48%;
+  margin-right: 2%;
+  white-space: normal;
+  vertical-align: top;
+}
+.preview-content :deep(.xumd-carousel img) {
+  width: 100% !important;
+  max-width: none !important;
+  height: auto !important;
+  border-radius: 12px;
+  display: block;
+}
+.preview-content :deep(.xumd-carousel p) {
+  margin: 6px 0 0;
 }
 
 /* 代码块不超出 */
