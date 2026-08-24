@@ -52,6 +52,8 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void
   (e: 'insertText', text: string): void
   (e: 'scroll', scrollTop: number, scrollHeight: number, clientHeight: number): void
+  (e: 'undo'): void
+  (e: 'redo'): void
 }>()
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
@@ -136,6 +138,18 @@ function onKeydown(e: KeyboardEvent): void {
   if ((e.ctrlKey || e.metaKey) && e.key === 's') {
     e.preventDefault()
     // 内容已自动保存
+    return
+  }
+
+  // Ctrl/Cmd + Z：撤销；Ctrl/Cmd + Shift + Z / Ctrl + Y：重做
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault()
+    emit('undo')
+    return
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+    e.preventDefault()
+    emit('redo')
     return
   }
 }
@@ -262,9 +276,30 @@ async function insertImagesFromFiles(files: FileList | File[]): Promise<void> {
 defineExpose({
   insertAtCursor,
   triggerFileInput,
-  focus: () => textareaRef.value?.focus(),
+  focus: (opts?: FocusOptions) => textareaRef.value?.focus(opts),
   getTextarea: () => textareaRef.value,
-  scrollToRatio
+  scrollToRatio,
+  // 外部（撤销/重做）直接设置 textarea 的值并同步 model
+  setTextareaValue: (val: string) => {
+    const textarea = textareaRef.value
+    if (!textarea) return
+    // 记录当前滚动位置与光标位置，撤销/重做后保持视口不变
+    const prevScrollTop = textarea.scrollTop
+    const prevSel = Math.min(textarea.selectionStart, val.length)
+    textarea.value = val
+    emit('update:modelValue', val)
+    updateCursorLine(textarea)
+    // 在下一帧恢复滚动与光标，避免内容高度变化导致视口跳变
+    nextTick(() => {
+      textarea.scrollTop = prevScrollTop
+      try {
+        textarea.selectionStart = textarea.selectionEnd = prevSel
+      } catch {
+        /* 值过短时不处理 */
+      }
+      syncScroll()
+    })
+  }
 })
 
 onMounted(() => {

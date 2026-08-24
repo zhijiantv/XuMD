@@ -88,6 +88,13 @@ export function gzhRender(mdSource: string, config: RenderConfig): RenderResult 
   //     预览版保留 leaf span（用于 CSS 样式定位），复制版移除（保证公众号兼容）
   copyOutputHtml = unwrapLeafSpans(copyOutputHtml)
 
+  // 11. 移动端兼容：公众号助手 App / 移动端渲染器不支持 display:flex，
+  //     把 flex 横向布局转换为 table 布局，避免封面被拉长、布局错乱。
+  //     仅作用于复制输出，不影响编辑器预览。
+  if (config.mobileCompat) {
+    copyOutputHtml = flexToTable(copyOutputHtml)
+  }
+
   return {
     previewHtml: previewHtml.trim(),
     copyOutputHtml: copyOutputHtml.trim()
@@ -238,6 +245,13 @@ function applyThemeStructure(
     }
     if (el.classList.contains('gzh-pill-tag')) {
       replacePillTag(el, components, tokens, structure)
+    }
+    if (el.classList.contains('gzh-hr')) {
+      replaceHr(
+        el, components, tokens, structure,
+        el.getAttribute('data-variant') || 'solid',
+        el.getAttribute('data-text') || ''
+      )
     }
   }
 
@@ -607,17 +621,53 @@ function replaceDelete(
   replaceWith(el, html)
 }
 
-// hr → 分割线
+// hr → 分割线（支持多种样式：solid / dashed / double / dot / diamond / text）
 function replaceHr(
   el: HTMLElement,
   components: ComponentTemplates,
   tokens: ThemeTokens,
-  structure: ThemeStructure
+  structure: ThemeStructure,
+  variant = 'solid',
+  text = ''
 ): void {
-  const html = renderTemplate(components.divider, {
+  let template: string
+  switch (variant) {
+    case 'dashed':
+      template = components.dividerDashed
+      break
+    case 'double':
+      template = components.dividerDouble
+      break
+    case 'dot':
+      template = components.dividerDot
+      break
+    case 'diamond':
+      template = components.dividerDiamond
+      break
+    case 'text':
+      template = components.dividerText
+      break
+    case 'primary':
+      template = components.dividerPrimary
+      break
+    case 'primary-bold':
+      template = components.dividerPrimaryBold
+      break
+    case 'primary-gradient':
+      template = components.dividerPrimaryGradient
+      break
+    case 'primary-dotted':
+      template = components.dividerPrimaryDotted
+      break
+    case 'solid':
+    default:
+      template = components.dividerSolid
+      break
+  }
+  const html = renderTemplate(template, {
     tokens,
     structure,
-    vars: {}
+    vars: { text: escapeHtml(text) }
   })
   replaceWith(el, html)
 }
@@ -1042,6 +1092,113 @@ function unwrapLeafSpans(html: string): string {
   })
 
   return root.innerHTML
+}
+
+/**
+ * 把复制输出中的 display:flex 横向布局转换为 table 布局。
+ *
+ * 原因：公众号助手 App 以及公众号移动端渲染器（已发布文章在手机上阅读）
+ * **不支持 display:flex**，会把横向排列的封面/目录/章节等塌缩为纵向堆叠，
+ * 表现为"封面被拉长、样式混乱"。
+ *
+ * 转换为 display:table + display:table-cell 后，在桌面编辑器、移动端 App、
+ * 已发布文章（移动端阅读）中都能正确横向排列，是微信公众号生态通用的稳妥方案。
+ *
+ * 仅作用于复制输出（copyOutputHtml），不影响编辑器内的实时预览。
+ */
+function flexToTable(html: string): string {
+  if (!html || !html.includes('display:flex')) return html
+
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(`<div id="xumd-flex">${html}</div>`, 'text/html')
+  const root = doc.getElementById('xumd-flex')
+  if (!root) return html
+
+  // 收集所有含 display:flex 的元素，按 DOM 深度降序处理（先深后浅）
+  const flexEls: HTMLElement[] = []
+  root.querySelectorAll('*').forEach(el => {
+    const style = (el as HTMLElement).getAttribute('style') || ''
+    if (/\bdisplay\s*:\s*flex\b/.test(style)) flexEls.push(el as HTMLElement)
+  })
+  flexEls.sort((a, b) => domDepth(b) - domDepth(a))
+
+  flexEls.forEach(el => convertFlexToTable(el))
+
+  return root.innerHTML
+}
+
+function domDepth(el: Element): number {
+  let d = 0
+  let p = el.parentElement
+  while (p) { d++; p = p.parentElement }
+  return d
+}
+
+function convertFlexToTable(el: HTMLElement): void {
+  const style = el.getAttribute('style') || ''
+  if (!/\bdisplay\s*:\s*flex\b/.test(style)) return
+
+  const children = Array.from(el.children).filter(
+    c => c.nodeType === Node.ELEMENT_NODE
+  ) as HTMLElement[]
+
+  if (children.length === 0) {
+    // 没有元素子节点：直接去掉 flex 相关属性即可
+    el.setAttribute('style', stripFlexProps(style))
+    return
+  }
+
+  const isSpaceBetween = /justify-content\s*:\s*space-between/.test(style)
+  const alignTop = /align-items\s*:\s*flex-start/.test(style)
+  const vAlign = alignTop ? 'top' : 'middle'
+
+  // 父元素：flex → table
+  let parentStyle = style
+    .replace(/display\s*:\s*flex/g, 'display:table')
+    .replace(/align-items\s*:[^;]+;?/g, '')
+    .replace(/justify-content\s*:[^;]+;?/g, '')
+    .replace(/gap\s*:[^;]+;?/g, '')
+    .replace(/;\s*;+/g, ';')
+    .replace(/;\s*}/g, '}')
+    .trim()
+  parentStyle += parentStyle.endsWith(';') ? '' : ';'
+  parentStyle += 'width:100%;border-collapse:collapse;'
+  el.setAttribute('style', parentStyle)
+
+  // 子元素：→ table-cell
+  children.forEach((child, idx) => {
+    const cStyle = child.getAttribute('style') || ''
+    let newC = cStyle
+      .replace(/flex\s*:\s*[0-9]+(\s+[0-9]+\s+[0-9a-z%]+)?;?/g, '')
+      .replace(/flex-grow\s*:[^;]+;?/g, '')
+      .replace(/flex-shrink\s*:[^;]+;?/g, '')
+      .replace(/flex-basis\s*:[^;]+;?/g, '')
+      .replace(/;\s*;+/g, ';')
+      .trim()
+
+    // flex:1 / flex-grow → 占满剩余宽度
+    if (/flex\s*:\s*1\b/.test(cStyle) || /flex-grow\s*:\s*[1-9]/.test(cStyle)) {
+      newC += ';width:100%;'
+    }
+    newC += `;display:table-cell;vertical-align:${vAlign};`
+
+    // space-between 且恰有两个子元素：最后一个右对齐并占满，模拟两端对齐
+    if (isSpaceBetween && children.length === 2 && idx === 1) {
+      newC += 'text-align:right;'
+    }
+
+    child.setAttribute('style', newC.replace(/;\s*;+/g, ';').trim())
+  })
+}
+
+function stripFlexProps(style: string): string {
+  return style
+    .replace(/display\s*:\s*flex/g, 'display:block')
+    .replace(/align-items\s*:[^;]+;?/g, '')
+    .replace(/justify-content\s*:[^;]+;?/g, '')
+    .replace(/gap\s*:[^;]+;?/g, '')
+    .replace(/;\s*;+/g, ';')
+    .trim()
 }
 
 /**

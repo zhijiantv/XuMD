@@ -75,6 +75,7 @@ const categories = [
   { id: 'layout', name: '布局组件' },
   { id: 'card', name: '卡片组件' },
   { id: 'content', name: '内容组件' },
+  { id: 'divider', name: '分割线' },
   { id: 'special', name: '特殊标记' }
 ]
 
@@ -277,6 +278,98 @@ const syntaxItems: SyntaxItem[] = [
     syntax: ':::timeline\n2024.01 - 事件一\n2024.02 - 事件二\n:::',
     sampleMd: ':::timeline\n2024.01 - 第一个事件描述\n2024.02 - 第二个事件描述\n2024.03 - 第三个事件描述\n:::',
     insert: ':::timeline\n2024.01 - 第一个事件\n2024.02 - 第二个事件\n2024.03 - 第三个事件\n:::\n'
+  },
+
+  // ========== 分割线（多种样式，颜色跟随主题） ==========
+  {
+    id: 'hr-solid',
+    name: '分割线（实线）',
+    category: 'divider',
+    desc: '基础实线分割线，等价于 ---，颜色跟随主题',
+    syntax: '---   （或 :::hr）',
+    sampleMd: ':::hr',
+    insert: '\n:::hr\n'
+  },
+  {
+    id: 'hr-dashed',
+    name: '分割线（虚线）',
+    category: 'divider',
+    desc: '虚线样式的分割线，颜色跟随主题',
+    syntax: ':::hr dashed',
+    sampleMd: ':::hr dashed',
+    insert: '\n:::hr dashed\n'
+  },
+  {
+    id: 'hr-double',
+    name: '分割线（双线）',
+    category: 'divider',
+    desc: '上下双实线的分割线，颜色跟随主题',
+    syntax: ':::hr double',
+    sampleMd: ':::hr double',
+    insert: '\n:::hr double\n'
+  },
+  {
+    id: 'hr-dot',
+    name: '分割线（圆点装饰）',
+    category: 'divider',
+    desc: '两侧细线 + 中间圆点，圆点颜色为主题主色',
+    syntax: ':::hr dot',
+    sampleMd: ':::hr dot',
+    insert: '\n:::hr dot\n'
+  },
+  {
+    id: 'hr-diamond',
+    name: '分割线（菱形装饰）',
+    category: 'divider',
+    desc: '两侧细线 + 中间菱形，菱形颜色为主题主色',
+    syntax: ':::hr diamond',
+    sampleMd: ':::hr diamond',
+    insert: '\n:::hr diamond\n'
+  },
+  {
+    id: 'hr-text',
+    name: '分割线（文字）',
+    category: 'divider',
+    desc: '两侧细线 + 中间文字，文字颜色为主题主色',
+    syntax: ':::hr text 章节分隔',
+    sampleMd: ':::hr text 章节分隔',
+    insert: '\n:::hr text 章节分隔\n'
+  },
+  {
+    id: 'hr-primary',
+    name: '分割线（主题色·实线）',
+    category: 'divider',
+    desc: '整条线为主题主色，凸显品牌色',
+    syntax: ':::hr primary',
+    sampleMd: ':::hr primary',
+    insert: '\n:::hr primary\n'
+  },
+  {
+    id: 'hr-primary-bold',
+    name: '分割线（主题色·粗线）',
+    category: 'divider',
+    desc: '加粗的主题主色实线，更醒目',
+    syntax: ':::hr primary-bold',
+    sampleMd: ':::hr primary-bold',
+    insert: '\n:::hr primary-bold\n'
+  },
+  {
+    id: 'hr-primary-gradient',
+    name: '分割线（主题色·渐变）',
+    category: 'divider',
+    desc: '两端主题主色向中心淡出的渐变线',
+    syntax: ':::hr primary-gradient',
+    sampleMd: ':::hr primary-gradient',
+    insert: '\n:::hr primary-gradient\n'
+  },
+  {
+    id: 'hr-primary-dotted',
+    name: '分割线（主题色·点线）',
+    category: 'divider',
+    desc: '主题主色点状线 + 主色圆点',
+    syntax: ':::hr primary-dotted',
+    sampleMd: ':::hr primary-dotted',
+    insert: '\n:::hr primary-dotted\n'
   }
 ]
 

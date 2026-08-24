@@ -49,6 +49,7 @@ export function gzhMdPlugin(md: MarkdownIt, options: GzhPluginOptions = {}): voi
   registerPillTagInline(md)
   registerCoverContainer(md)
   registerSpecialMarkers(md)
+  registerHrContainer(md)
 }
 
 // ============================================================
@@ -728,5 +729,74 @@ function registerPillTagInline(md: MarkdownIt): void {
 
   md.renderer.rules.gzh_pilltag = (tokens, idx) => {
     return `<span class="gzh-pill-tag" data-content="${escapeAttr(tokens[idx].content)}">${tokens[idx].content}</span>`
+  }
+}
+
+// ============================================================
+// :::hr 分割线（多种样式，单行语法，无需闭合）
+// 语法：
+//   :::hr              → 实线（等价于 ---）
+//   :::hr dashed       → 虚线
+//   :::hr double       → 双线
+//   :::hr dot          → 圆点装饰
+//   :::hr diamond      → 菱形装饰
+//   :::hr text 文字     → 中间带文字的装饰分割线
+//   :::hr 任意文字      → 自动识别为 text 模式
+// ============================================================
+
+const HR_VARIANTS = ['solid', 'dashed', 'double', 'dot', 'diamond', 'text', 'primary', 'primary-bold', 'primary-gradient', 'primary-dotted']
+
+function registerHrContainer(md: MarkdownIt): void {
+  md.block.ruler.before('fence', 'gzh_hr', (state, startLine, _endLine, silent) => {
+    const startPos = state.bMarks[startLine] + state.tShift[startLine]
+    const lineText = state.src.slice(startPos, state.eMarks[startLine])
+
+    const match = lineText.match(/^:::hr(?:\s+(.*))?$/)
+    if (!match) return false
+    if (silent) return true
+
+    const rest = (match[1] || '').trim()
+    let variant = 'solid'
+    let text = ''
+
+    if (rest) {
+      const sp = rest.indexOf(' ')
+      const first = sp === -1 ? rest : rest.slice(0, sp)
+      if (HR_VARIANTS.includes(first)) {
+        variant = first
+        if (variant === 'text') {
+          text = sp === -1 ? '' : rest.slice(sp + 1).trim()
+        }
+      } else {
+        // 不是已知变体 → 整段作为文字分割线
+        variant = 'text'
+        text = rest
+      }
+    }
+
+    const token = state.push('gzh_hr', 'section', 0)
+    token.info = variant
+    token.content = text
+    token.markup = ':::hr'
+
+    // 兼容误写的闭合行 :::
+    const nextLine = startLine + 1
+    if (nextLine < _endLine) {
+      const np = state.bMarks[nextLine] + state.tShift[nextLine]
+      const ntext = state.src.slice(np, state.eMarks[nextLine])
+      if (/^:::\s*$/.test(ntext)) {
+        state.line = nextLine + 1
+        return true
+      }
+    }
+    state.line = startLine + 1
+    return true
+  })
+
+  md.renderer.rules.gzh_hr = (tokens, idx) => {
+    const t = tokens[idx]
+    const v = (t.info || 'solid').replace(/"/g, '')
+    const txt = (t.content || '').replace(/"/g, '')
+    return `<section class="gzh-hr" data-variant="${v}" data-text="${txt}"></section>`
   }
 }

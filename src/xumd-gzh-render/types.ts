@@ -144,8 +144,26 @@ export interface ComponentTemplates {
   /** 无序列表项 */
   unorderedListItem: string
 
-  /** 分割线 */
-  divider: string
+  /** 分割线 - 实线（默认，等价于 ---） */
+  dividerSolid: string
+  /** 分割线 - 虚线 */
+  dividerDashed: string
+  /** 分割线 - 双线 */
+  dividerDouble: string
+  /** 分割线 - 圆点装饰 */
+  dividerDot: string
+  /** 分割线 - 菱形装饰 */
+  dividerDiamond: string
+  /** 分割线 - 文字装饰 */
+  dividerText: string
+  /** 分割线 - 主题主色细实线 */
+  dividerPrimary: string
+  /** 分割线 - 主题主色粗实线 */
+  dividerPrimaryBold: string
+  /** 分割线 - 主题主色渐变线（两端主色向中心淡出） */
+  dividerPrimaryGradient: string
+  /** 分割线 - 主题主色点状线 */
+  dividerPrimaryDotted: string
 
   /** 行内高亮样式 */
   inlineStrong: string
@@ -254,6 +272,14 @@ export interface RenderConfig {
   coverImage?: string
   /** 首行缩进 */
   textIndent?: boolean
+  /**
+   * 移动端兼容模式。
+   * 公众号助手 App 及公众号移动端渲染器不支持 display:flex，
+   * 开启后把复制输出中的 flex 横向布局转换为 table 布局，
+   * 保证在移动端粘贴/阅读时样式不乱（封面不再被拉长等）。
+   * 仅影响 copyOutputHtml，不影响编辑器预览。
+   */
+  mobileCompat?: boolean
 }
 
 // ============================================================

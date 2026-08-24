@@ -33,13 +33,23 @@
           <span class="pane-title">Markdown 编辑器</span>
         </div>
         <div class="toolbar-wrapper">
-          <QuickToolbar :is-dark="isDark" @insert="onToolbarAction" @open-help="showHelpPanel = true" />
+          <QuickToolbar
+            :is-dark="isDark"
+            :can-undo="canUndo"
+            :can-redo="canRedo"
+            @insert="onToolbarAction"
+            @open-help="showHelpPanel = true"
+            @undo="onUndo"
+            @redo="onRedo"
+          />
         </div>
         <EditorPane
           ref="editorRef"
           v-model="mdContent"
           :is-dark="isDark"
           @scroll="onEditorScroll"
+          @undo="onUndo"
+          @redo="onRedo"
         />
         <!-- 编辑区状态栏（移动端隐藏） -->
         <div v-show="!isMobile" class="editor-status-bar">
@@ -241,6 +251,75 @@ function showTempStatus(text: string, duration = 2000): void {
   }, duration)
 }
 
+// 撤销 / 重做栈（编辑区返回与撤回按钮）
+const undoStack = ref<string[]>([])
+const redoStack = ref<string[]>([])
+const canUndo = ref(false)
+const canRedo = ref(false)
+// 标记：由 undo/redo 触发的赋值，不应再入栈
+let isApplyingHistory = false
+// 上一次"稳定"内容：作为下一次变更前的快照基准入栈，保证 undo 能回到更早状态
+// 注意：mdContent 在下方才声明，这里先置空，加载文章内容后再赋值（见 loadCurrentArticleContent 后）
+let lastCommitted = ''
+
+const UNDO_LIMIT = 100
+
+// 外部加载内容（切换/新建/删除文章）时重置历史，避免把旧内容误入撤销栈
+function resetHistory(content: string): void {
+  undoStack.value = []
+  redoStack.value = []
+  canUndo.value = false
+  canRedo.value = false
+  lastCommitted = content
+}
+
+function pushUndo(): void {
+  // 仅在内容真正发生变化时，把"变更前"的状态（lastCommitted）入栈
+  if (lastCommitted === mdContent.value) return
+  undoStack.value.push(lastCommitted)
+  if (undoStack.value.length > UNDO_LIMIT) undoStack.value.shift()
+  redoStack.value = []
+  canUndo.value = undoStack.value.length > 0
+  canRedo.value = false
+  lastCommitted = mdContent.value
+}
+
+function onUndo(): void {
+  if (undoStack.value.length === 0) return
+  const prev = undoStack.value.pop() as string
+  redoStack.value.push(mdContent.value)
+  isApplyingHistory = true
+  mdContent.value = prev
+  // 同步更新基准，避免后续输入把错误状态入栈
+  lastCommitted = prev
+  nextTick(() => {
+    isApplyingHistory = false
+    editorRef.value?.setTextareaValue?.(prev)
+  })
+  canUndo.value = undoStack.value.length > 0
+  canRedo.value = true
+  // 不强制滚动：preventScroll 避免浏览器把编辑区拉到可见位置（即跳到底部）
+  editorRef.value?.focus?.({ preventScroll: true })
+}
+
+function onRedo(): void {
+  if (redoStack.value.length === 0) return
+  const nextVal = redoStack.value.pop() as string
+  undoStack.value.push(mdContent.value)
+  // 重做也应记录"重做前"状态到基准，便于再次编辑时正确入栈
+  lastCommitted = nextVal
+  isApplyingHistory = true
+  mdContent.value = nextVal
+  nextTick(() => {
+    isApplyingHistory = false
+    editorRef.value?.setTextareaValue?.(nextVal)
+  })
+  canRedo.value = redoStack.value.length > 0
+  canUndo.value = true
+  // 不强制滚动：preventScroll 避免浏览器把编辑区拉到可见位置（即跳到底部）
+  editorRef.value?.focus?.({ preventScroll: true })
+}
+
 // 历史记录列表
 const historyList = ref<HistoryItem[]>([])
 
@@ -388,6 +467,15 @@ function loadCurrentArticleContent(): void {
   mdContent.value = current?.content || defaultMdContent
 }
 loadCurrentArticleContent()
+// 文章初始内容作为撤销基准
+lastCommitted = mdContent.value
+
+// 切换/新建/删除文章导致内容被外部替换时，重置撤销历史，避免旧内容混入栈中
+watch(currentArticleId, () => {
+  nextTick(() => {
+    resetHistory(mdContent.value)
+  })
+})
 
 // 主题配置
 const themeId = ref(config.value.themeId)
@@ -418,7 +506,9 @@ function doRender(): void {
         : undefined,
       authorName: authorName.value || 'XuMD 用户',
       coverTitle: 'XuMD 公众号编辑器',
-      coverSubtitle: authorName.value || '让排版更简单'
+      coverSubtitle: authorName.value || '让排版更简单',
+      // 移动端：复制输出启用 flex→table 兼容，避免公众号助手 App 排版错乱
+      mobileCompat: isMobile.value
     }
 
     const result: RenderResult = gzhRender(mdContent.value, renderConfig)
@@ -455,8 +545,10 @@ function doRender(): void {
 // 事件处理
 // ============================================================
 
-// 内容变化 → 标记编辑中 + 防抖保存 + 防抖渲染
+// 内容变化 → 标记编辑中 + 防抖保存 + 防抖渲染 + 入撤销栈
 watch(mdContent, () => {
+  // 由 undo/redo 触发的赋值无需再次入栈
+  if (!isApplyingHistory) pushUndo()
   updateCurrentArticleMeta()
   scheduleSave()
   scheduleRender()
@@ -475,6 +567,11 @@ watch(
     doRender()
   }
 )
+
+// 移动端状态变化 → 重新渲染（切换复制输出的 flex→table 兼容）
+watch(isMobile, () => {
+  doRender()
+})
 
 // 行数字数统计
 const lineCount = computed(() => {
@@ -691,6 +788,12 @@ function onToolbarAction(action: string): void {
   const editor = editorRef.value
   if (!editor) return
 
+  // 先记录撤销点（仅对会改变内容的动作）
+  const recordable = ![
+    'image'
+  ].includes(action)
+  if (recordable) pushUndo()
+
   const textarea = editor.getTextarea()
   if (!textarea) return
 
@@ -801,6 +904,18 @@ function onToolbarAction(action: string): void {
         textarea.focus()
       })
       return
+    case 'taskList':
+      insertText = '- [ ] '
+      const newTaskContent =
+        mdContent.value.slice(0, lineStart) +
+        '- [ ] ' +
+        mdContent.value.slice(lineStart)
+      mdContent.value = newTaskContent
+      nextTick(() => {
+        textarea.selectionStart = textarea.selectionEnd = start + 6
+        textarea.focus()
+      })
+      return
     case 'quote':
       insertText = '> '
       const newQuoteContent =
@@ -879,6 +994,9 @@ function onToolbarAction(action: string): void {
     textarea.selectionStart = textarea.selectionEnd = pos
     textarea.focus()
   })
+
+  // 同步预览（工具栏动作需实时反映到预览区）
+  doRender()
 }
 
 // 从语法帮助插入
@@ -1078,7 +1196,6 @@ body {
   flex-shrink: 0;
   overflow: visible;
   position: relative;
-  z-index: 100;
 }
 
 .toolbar-wrapper :deep(.quick-toolbar) {
@@ -1089,8 +1206,17 @@ body {
   min-height: 42px;
 }
 
+/* 移动端：工具栏允许换行 */
+@media (max-width: 640px) {
+  .toolbar-wrapper :deep(.quick-toolbar) {
+    min-height: auto;
+    flex-wrap: wrap;
+  }
+}
+
+/* 下拉菜单浮到最顶层，避免被编辑区（移动端 editor-side 的 z-index:1/2 或编辑器内部元素）遮挡 */
 .toolbar-wrapper :deep(.dropdown-menu) {
-  z-index: 1000;
+  z-index: 99999;
 }
 
 /* 编辑区状态栏 */

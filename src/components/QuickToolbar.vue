@@ -16,12 +16,12 @@
     <div class="toolbar-divider"></div>
 
     <!-- 标题下拉 -->
-    <div class="toolbar-dropdown" v-click-outside="closeHeadingMenu">
+    <div class="toolbar-dropdown">
       <button
         class="tool-btn dropdown-trigger"
-        :class="{ active: showHeadingMenu }"
+        :class="{ active: activeMenu === 'heading' }"
         title="标题"
-        @click="showHeadingMenu = !showHeadingMenu; showListMenu = false; showMoreMenu = false"
+        @click="toggleMenu('heading', $event)"
       >
         <span class="tool-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -31,7 +31,12 @@
           </svg>
         </span>
       </button>
-      <div v-if="showHeadingMenu" class="dropdown-menu">
+      <div
+        v-if="activeMenu === 'heading'"
+        class="dropdown-menu"
+        :class="{ 'align-right': menuPos.align === 'right' }"
+        :style="{ top: menuPos.top + 'px', left: menuPos.left + 'px' }"
+      >
         <button
           v-for="opt in headingOptions"
           :key="opt.action"
@@ -44,12 +49,12 @@
     </div>
 
     <!-- 列表下拉 -->
-    <div class="toolbar-dropdown" v-click-outside="closeListMenu">
+    <div class="toolbar-dropdown">
       <button
         class="tool-btn dropdown-trigger"
-        :class="{ active: showListMenu }"
+        :class="{ active: activeMenu === 'list' }"
         title="列表"
-        @click="showListMenu = !showListMenu; showHeadingMenu = false; showMoreMenu = false"
+        @click="toggleMenu('list', $event)"
       >
         <span class="tool-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -62,7 +67,12 @@
           </svg>
         </span>
       </button>
-      <div v-if="showListMenu" class="dropdown-menu">
+      <div
+        v-if="activeMenu === 'list'"
+        class="dropdown-menu"
+        :class="{ 'align-right': menuPos.align === 'right' }"
+        :style="{ top: menuPos.top + 'px', left: menuPos.left + 'px' }"
+      >
         <button
           v-for="opt in listOptions"
           :key="opt.action"
@@ -90,12 +100,12 @@
     </div>
 
     <!-- 更多工具下拉 -->
-    <div class="toolbar-dropdown more-dropdown" v-click-outside="closeMoreMenu">
+    <div class="toolbar-dropdown more-dropdown">
       <button
         class="tool-btn dropdown-trigger more-btn"
-        :class="{ active: showMoreMenu }"
+        :class="{ active: activeMenu === 'more' }"
         title="更多工具"
-        @click="showMoreMenu = !showMoreMenu; showHeadingMenu = false; showListMenu = false"
+        @click="toggleMenu('more', $event)"
       >
         <span class="tool-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -105,7 +115,12 @@
           </svg>
         </span>
       </button>
-      <div v-if="showMoreMenu" class="dropdown-menu more-menu">
+      <div
+        v-if="activeMenu === 'more'"
+        class="dropdown-menu more-menu"
+        :class="{ 'align-right': menuPos.align === 'right' }"
+        :style="{ top: menuPos.top + 'px', left: menuPos.left + 'px' }"
+      >
         <div class="dropdown-section-title">更多工具</div>
         <button
           v-for="tool in moreTools"
@@ -122,10 +137,42 @@
     <!-- 占位撑开 -->
     <div class="toolbar-spacer"></div>
 
+    <div class="toolbar-divider"></div>
+
+    <!-- 撤销 / 重做 -->
+    <button
+      class="tool-btn"
+      title="撤回 (Ctrl+Z)"
+      :disabled="!canUndo"
+      @click="$emit('undo')"
+    >
+      <span class="tool-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7v6h6"/>
+          <path d="M3 13a9 9 0 1 0 3-7.7L3 8"/>
+        </svg>
+      </span>
+    </button>
+    <button
+      class="tool-btn"
+      title="重做 (Ctrl+Shift+Z)"
+      :disabled="!canRedo"
+      @click="$emit('redo')"
+    >
+      <span class="tool-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 7v6h-6"/>
+          <path d="M21 13a9 9 0 1 1-3-7.7L21 8"/>
+        </svg>
+      </span>
+    </button>
+
+    <div class="toolbar-spacer"></div>
+
     <!-- 帮助按钮（始终可见） -->
     <button
       class="tool-btn help-btn"
-      title="组件库帮助"
+      title="组件库 / 返回"
       @click="$emit('openHelp')"
     >
       <span class="tool-icon">
@@ -135,58 +182,112 @@
           <line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
       </span>
-      <span class="help-text">帮助</span>
+      <span class="help-text">组件库</span>
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { directive as clickOutside } from '../utils/click-outside'
+import { ref, onMounted, onUnmounted } from 'vue'
 
-// 注册自定义指令（script setup 中使用 v 前缀约定）
-const vClickOutside = clickOutside
-
-defineProps<{
+const props = defineProps<{
   isDark?: boolean
+  canUndo?: boolean
+  canRedo?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'insert', action: string): void
   (e: 'openHelp'): void
+  (e: 'undo'): void
+  (e: 'redo'): void
 }>()
 
-const showHeadingMenu = ref(false)
-const showListMenu = ref(false)
-const showMoreMenu = ref(false)
+// 保留对 props 的引用，避免未使用告警
+void props
 
-function closeHeadingMenu(): void {
-  showHeadingMenu.value = false
+const toolbarRef = ref<HTMLElement | null>(null)
+const activeMenu = ref<'' | 'heading' | 'list' | 'more'>('')
+const menuPos = ref<{ top: number; left: number; align: 'left' | 'right' }>({
+  top: 0,
+  left: 0,
+  align: 'left'
+})
+
+// 打开下拉菜单：计算触发按钮位置，用 fixed 定位避免被编辑区遮挡 / overflow 裁剪
+function openMenu(name: 'heading' | 'list' | 'more', event: MouseEvent): void {
+  const btn = (event.currentTarget as HTMLElement)
+  const rect = btn.getBoundingClientRect()
+  // 菜单显示在按钮正下方，留出 6px 间隙
+  const top = rect.bottom + 6
+  let left = rect.left
+  let align: 'left' | 'right' = 'left'
+  // 右侧溢出视口时改为右对齐
+  const estWidth = 150
+  if (left + estWidth > window.innerWidth - 8) {
+    left = rect.right - estWidth
+    align = 'right'
+  }
+  menuPos.value = { top, left, align }
+  activeMenu.value = name
 }
-function closeListMenu(): void {
-  showListMenu.value = false
+
+function closeAll(): void {
+  activeMenu.value = ''
 }
-function closeMoreMenu(): void {
-  showMoreMenu.value = false
+
+// 点击页面任意位置时关闭下拉：
+// - 点击触发器或菜单内部（.toolbar-dropdown 范围内）不关闭，由 toggleMenu / 菜单项自行处理
+// - 点击其它区域则关闭
+function onDocMouseDown(e: MouseEvent): void {
+  const t = e.target as Node
+  // 点击落在某个下拉（触发器或菜单）内部时，不在此处关闭，交给 toggleMenu 切换逻辑
+  if (toolbarRef.value && t instanceof Node && toolbarRef.value.contains(t)) {
+    const dropdown = (t as HTMLElement).closest('.toolbar-dropdown')
+    if (dropdown) return
+  }
+  if (activeMenu.value) closeAll()
 }
+
+// 页面滚动或窗口尺寸变化时关闭下拉，避免 fixed 菜单错位
+function onScrollOrResize(): void {
+  if (activeMenu.value) closeAll()
+}
+
+// 切换下拉：一次点击打开，再次点击同一触发器关闭
+function toggleMenu(name: 'heading' | 'list' | 'more', event: MouseEvent): void {
+  event.stopPropagation()
+  if (activeMenu.value === name) {
+    closeAll()
+  } else {
+    openMenu(name, event)
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('mousedown', onDocMouseDown)
+  window.addEventListener('scroll', onScrollOrResize, true)
+  window.addEventListener('resize', onScrollOrResize)
+})
+onUnmounted(() => {
+  document.removeEventListener('mousedown', onDocMouseDown)
+  window.removeEventListener('scroll', onScrollOrResize, true)
+  window.removeEventListener('resize', onScrollOrResize)
+})
 
 function handleInsert(action: string): void {
   emit('insert', action)
-  showHeadingMenu.value = false
-  showListMenu.value = false
-  showMoreMenu.value = false
+  closeAll()
 }
 
 function onDropdownInsert(action: string): void {
   emit('insert', action)
-  showHeadingMenu.value = false
-  showListMenu.value = false
-  showMoreMenu.value = false
+  closeAll()
 }
 
 function onMoreInsert(action: string): void {
   emit('insert', action)
-  showMoreMenu.value = false
+  closeAll()
 }
 
 // SVG 图标
@@ -313,6 +414,21 @@ const listOptions = [
   color: var(--toolbar-hover-text);
 }
 
+.tool-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.tool-btn:disabled:hover {
+  background: transparent;
+  color: var(--toolbar-text, #6b7280);
+}
+
+.quick-toolbar.dark .tool-btn:disabled:hover {
+  background: transparent;
+  color: var(--toolbar-text);
+}
+
 .tool-icon {
   width: 16px;
   height: 16px;
@@ -353,15 +469,13 @@ const listOptions = [
 }
 
 .dropdown-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
+  position: fixed;
   min-width: 140px;
   background: var(--dropdown-bg, #fff);
   border: 1px solid var(--dropdown-border, #e5e7eb);
   border-radius: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  z-index: 1000;
+  z-index: 99999;
   padding: 4px;
 }
 
@@ -431,9 +545,12 @@ const listOptions = [
 }
 
 .more-menu {
-  right: 0;
-  left: auto;
   min-width: 130px;
+}
+
+/* 右对齐：JS 已把 left 设为按钮右侧 - 菜单宽度，这里仅作视觉确认 */
+.dropdown-menu.align-right {
+  /* left 由 :style 内联控制 */
 }
 
 /* 帮助按钮 */
@@ -461,17 +578,29 @@ const listOptions = [
 /* 移动端适配 */
 @media (max-width: 640px) {
   .quick-toolbar {
-    padding: 4px 4px;
-    gap: 0;
+    padding: 6px 8px;
+    gap: 2px;
+    /* 换行排列：所有按钮可见，不被父级 overflow:hidden 裁剪 */
+    flex-wrap: wrap;
+    overflow-x: visible;
+    overflow-y: visible;
+    min-height: auto;
   }
 
   .tool-btn {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
   }
 
   .toolbar-divider {
     margin: 0 2px;
+    height: 20px;
+    align-self: center;
+  }
+
+  /* 占位撑开元素在移动端不占整行 */
+  .toolbar-spacer {
+    display: none;
   }
 
   .help-text {
@@ -480,8 +609,8 @@ const listOptions = [
 
   .help-btn {
     padding: 0;
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
   }
 }
 </style>

@@ -235,10 +235,56 @@ export const moyuTicket: Theme = {
   </p>
 </section>`,
 
-      divider: `<section style="padding:0 20px;margin:32px 0;">
+      // 分割线（多种样式，颜色跟随主题）
+      dividerSolid: `<section style="padding:0 20px;margin:32px 0;">
+  <section style="border-top:1px solid {{token.dividerColor}};">
+    <span leaf=""><br></span>
+  </section>
+</section>`,
+      dividerDashed: `<section style="padding:0 20px;margin:32px 0;">
   <section style="border-top:2px dashed {{token.dividerColor}};">
     <span leaf=""><br></span>
   </section>
+</section>`,
+      dividerDouble: `<section style="padding:0 20px;margin:32px 0;">
+  <section style="border-top:1px solid {{token.dividerColor}};border-bottom:1px solid {{token.dividerColor}};height:3px;">
+    <span leaf=""><br></span>
+  </section>
+</section>`,
+      dividerDot: `<section style="padding:0 20px;margin:32px 0;text-align:center;">
+  <span style="display:inline-block;width:32%;border-top:1px solid {{token.dividerColor}};vertical-align:middle;"><span leaf=""><br></span></span>
+  <span style="display:inline-block;color:{{token.primary}};font-size:12px;margin:0 12px;vertical-align:middle;"><span leaf="">●</span></span>
+  <span style="display:inline-block;width:32%;border-top:1px solid {{token.dividerColor}};vertical-align:middle;"><span leaf=""><br></span></span>
+</section>`,
+      dividerDiamond: `<section style="padding:0 20px;margin:32px 0;text-align:center;">
+  <span style="display:inline-block;width:32%;border-top:1px solid {{token.dividerColor}};vertical-align:middle;"><span leaf=""><br></span></span>
+  <span style="display:inline-block;color:{{token.primary}};font-size:12px;margin:0 12px;vertical-align:middle;"><span leaf="">◆</span></span>
+  <span style="display:inline-block;width:32%;border-top:1px solid {{token.dividerColor}};vertical-align:middle;"><span leaf=""><br></span></span>
+</section>`,
+      dividerText: `<section style="padding:0 20px;margin:32px 0;text-align:center;">
+  <span style="display:inline-block;width:22%;border-top:1px solid {{token.dividerColor}};vertical-align:middle;"><span leaf=""><br></span></span>
+  <span style="display:inline-block;color:{{token.primary}};font-size:13px;font-weight:600;letter-spacing:2px;margin:0 12px;vertical-align:middle;white-space:nowrap;"><span leaf="">{{text}}</span></span>
+  <span style="display:inline-block;width:22%;border-top:1px solid {{token.dividerColor}};vertical-align:middle;"><span leaf=""><br></span></span>
+</section>`,
+
+      // 分割线（整条线带主题主色）
+      dividerPrimary: `<section style="padding:0 20px;margin:32px 0;">
+  <section style="border-top:2px solid {{token.primary}};">
+    <span leaf=""><br></span>
+  </section>
+</section>`,
+      dividerPrimaryBold: `<section style="padding:0 20px;margin:32px 0;">
+  <section style="border-top:4px solid {{token.primary}};">
+    <span leaf=""><br></span>
+  </section>
+</section>`,
+      dividerPrimaryGradient: `<section style="padding:0 20px;margin:32px 0;text-align:center;">
+  <span style="display:inline-block;width:60%;height:3px;border-radius:2px;background:linear-gradient(to right,{{token.primary}},rgba(0,0,0,0),{{token.primary}});vertical-align:middle;"><span leaf=""><br></span></span>
+</section>`,
+      dividerPrimaryDotted: `<section style="padding:0 20px;margin:32px 0;text-align:center;">
+  <span style="display:inline-block;width:32%;border-top:1px dashed {{token.primary}};vertical-align:middle;"><span leaf=""><br></span></span>
+  <span style="display:inline-block;color:{{token.primary}};font-size:10px;margin:0 12px;vertical-align:middle;"><span leaf="">●</span></span>
+  <span style="display:inline-block;width:32%;border-top:1px dashed {{token.primary}};vertical-align:middle;"><span leaf=""><br></span></span>
 </section>`,
 
       inlineStrong: `<strong style="color:{{token.primary}};">{{content}}</strong>`,
