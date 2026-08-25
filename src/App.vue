@@ -156,7 +156,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import EditorHeader from './components/EditorHeader.vue'
 import StorageModal from './components/StorageModal.vue'
 import ImageHostModal from './components/ImageHostModal.vue'
@@ -682,6 +682,24 @@ async function saveCurrentArticleNow(): Promise<void> {
   updateCurrentArticleMeta()
   await saveNow()
 }
+
+// 页面关闭或隐藏前 flush 未保存的变更，避免 3 秒防抖导致丢失
+function flushSaveBeforeLeave(): void {
+  updateCurrentArticleMeta()
+  saveNow()
+}
+
+window.addEventListener('beforeunload', flushSaveBeforeLeave)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    flushSaveBeforeLeave()
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', flushSaveBeforeLeave)
+  document.removeEventListener('visibilitychange', flushSaveBeforeLeave)
+})
 
 // 从 Markdown 提取标题
 function extractTitle(md: string): string {

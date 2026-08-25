@@ -171,9 +171,11 @@ function applyThemeStructure(
     if (text) chapterTitles.push(text)
   })
 
+  // 预计算步骤列表的组内序号，保证每个独立组从 01 开始重新编号
+  precomputeStepIndices(root)
+
   // 章节计数器（正序，从 1 开始）
   let chapterIndex = 0
-  let stepIndex = 0
 
   // 从后往前遍历子节点，避免 DOM 修改影响遍历
   function processNode(node: Node): void {
@@ -264,8 +266,7 @@ function applyThemeStructure(
       replaceQuoteHighlight(el, components, tokens, structure)
     }
     if (el.classList.contains('gzh-step-item')) {
-      replaceStepItem(el, components, tokens, structure, stepIndex)
-      stepIndex++
+      replaceStepItem(el, components, tokens, structure)
     }
     if (el.classList.contains('gzh-timeline')) {
       replaceTimeline(el, components, tokens, structure)
@@ -1038,12 +1039,11 @@ function replaceStepItem(
   el: HTMLElement,
   components: ComponentTemplates,
   tokens: ThemeTokens,
-  _structure: ThemeStructure,
-  index: number
+  _structure: ThemeStructure
 ): void {
   const title = el.getAttribute('data-title') || ''
   const desc = el.getAttribute('data-desc') || ''
-  const stepIndex = String(index + 1).padStart(2, '0')
+  const stepIndex = el.getAttribute('data-step-index') || '01'
   const html = renderTemplate(components.stepItem, {
     tokens,
     vars: {
@@ -1053,6 +1053,22 @@ function replaceStepItem(
     }
   })
   replaceWith(el, html)
+}
+
+// 预计算步骤列表组内序号：相邻的 .gzh-step-item 为一组，每组从 01 开始重新编号
+function precomputeStepIndices(root: HTMLElement): void {
+  const stepItems = Array.from(root.querySelectorAll('.gzh-step-item'))
+  for (const item of stepItems) {
+    const prev = item.previousElementSibling
+    let index = 1
+    if (prev?.classList.contains('gzh-step-item')) {
+      const prevIndex = prev.getAttribute('data-step-index')
+      if (prevIndex) {
+        index = parseInt(prevIndex, 10) + 1
+      }
+    }
+    item.setAttribute('data-step-index', String(index).padStart(2, '0'))
+  }
 }
 
 // 行内药丸标签 [tag:xxx]
