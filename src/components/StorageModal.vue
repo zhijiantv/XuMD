@@ -33,6 +33,7 @@
                 <polyline points="20 6 9 17 4 12"></polyline>
               </svg>
             </div>
+            <div v-else-if="opt.recommended" class="option-badge recommend">推荐</div>
             <div v-else-if="opt.type === 'filesystem' && !fsSupported" class="option-badge">不支持</div>
           </div>
         </div>
@@ -56,6 +57,7 @@ interface StorageOption {
   desc: string
   icon: string
   disabled?: boolean
+  recommended?: boolean
 }
 
 const props = defineProps<{
@@ -72,9 +74,16 @@ const emit = defineEmits<{
 
 const storageOptions: StorageOption[] = [
   {
+    type: 'indexeddb',
+    name: '浏览器存储（推荐）',
+    desc: '文章保存在浏览器 IndexedDB 中，容量大、关闭网页不丢内容（复刻 WeMD 存储模式），清除浏览器数据会丢失。',
+    icon: '<ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>',
+    recommended: true
+  },
+  {
     type: 'localStorage',
-    name: '浏览器本地存储',
-    desc: '文章保存在浏览器 localStorage 中，关闭网页仍保留，清除浏览器数据会丢失。',
+    name: '浏览器本地存储（兼容旧版）',
+    desc: '文章保存在浏览器 localStorage 中，容量较小，内容过大（如含大图）可能保存失败。仅用于兼容旧数据。',
     icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline>'
   },
   {
@@ -331,6 +340,16 @@ function selectOption(opt: StorageOption): void {
   color: #9ca3af;
   border-radius: 10px;
   font-weight: 500;
+}
+
+.option-badge.recommend {
+  background: #dcfce7;
+  color: #065f46;
+}
+
+.modal.dark .option-badge.recommend {
+  background: #064e3b;
+  color: #6ee7b7;
 }
 
 .modal.dark .option-badge {

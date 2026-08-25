@@ -16,98 +16,189 @@
           v-for="t in imageHostTypes"
           :key="t.type"
           class="tab-btn"
-          :class="{ active: activeTab === t.type, disabled: t.disabled }"
-          @click="switchTab(t)"
+          :class="{ active: activeTab === t.type }"
+          @click="activeTab = t.type"
         >
           {{ t.name }}
-          <span v-if="t.disabled" class="tab-badge">敬请期待</span>
-          <span v-else-if="currentType === t.type && activeTab === t.type" class="tab-badge current">当前</span>
+          <span v-if="imageHostType === t.type" class="tab-badge current">使用中</span>
         </button>
       </div>
 
       <div class="modal-body">
-        <!-- 本地 base64 -->
-        <div v-if="activeTab === 'local'" class="config-panel">
-          <p class="config-desc">
-            图片以 Base64 编码直接嵌入 Markdown 中，无需上传，离线可用。
-          </p>
-          <div class="config-tip">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="16" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12.01" y2="8"></line>
-            </svg>
-            <span>优点：完全离线、无需配置、隐私安全</span>
+        <!-- 官方图床 -->
+        <div v-if="activeTab === 'official'" class="config-panel">
+          <div class="official-intro">
+            <div class="intro-icon">☁</div>
+            <div>
+              <h3>官方托管服务</h3>
+              <p>无需额外配置，直接用于公众号图片上传</p>
+            </div>
           </div>
-          <div class="config-tip warn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-              <line x1="12" y1="9" x2="12" y2="13"></line>
-              <line x1="12" y1="17" x2="12.01" y2="17"></line>
-            </svg>
-            <span>缺点：图片体积会增大约 33%，文章文件较大</span>
+          <div class="feature-list">
+            <div class="feature-item"><span>⚡</span><div><strong>高速访问</strong><small>基于全球边缘网络，加载流畅</small></div></div>
+            <div class="feature-item"><span>🔒</span><div><strong>安全稳定</strong><small>无需配置 Key，HTTPS 加密传输</small></div></div>
+            <div class="feature-item"><span>🖼</span><div><strong>开箱即用</strong><small>默认集成，专注内容创作</small></div></div>
           </div>
-          <button class="apply-btn" @click="applyHost('local')">
-            {{ currentType === 'local' ? '当前使用中' : '使用此图床' }}
+          <button v-if="imageHostType !== 'official'" class="apply-btn" @click="activate('official')">
+            启用官方图床
           </button>
+          <div v-else class="active-hint">✓ 当前已启用官方图床</div>
         </div>
 
         <!-- 七牛云 -->
         <div v-if="activeTab === 'qiniu'" class="config-panel">
-          <p class="config-desc">配置七牛云对象存储，上传图片到你的七牛云空间。</p>
+          <div v-if="imageHostType === 'qiniu'" class="active-status">● 当前使用中</div>
           <div class="form-group">
             <label class="form-label">AccessKey</label>
-            <input type="text" class="form-input" v-model="configs.qiniu.accessKey" placeholder="请输入 AccessKey" />
+            <input type="text" class="form-input" v-model="form.qiniu.accessKey" placeholder="从七牛云控制台获取" />
           </div>
           <div class="form-group">
             <label class="form-label">SecretKey</label>
-            <input type="password" class="form-input" v-model="configs.qiniu.secretKey" placeholder="请输入 SecretKey" />
+            <input type="password" class="form-input" v-model="form.qiniu.secretKey" placeholder="从七牛云控制台获取" />
           </div>
           <div class="form-group">
-            <label class="form-label">Bucket（存储空间）</label>
-            <input type="text" class="form-input" v-model="configs.qiniu.bucket" placeholder="请输入 Bucket 名称" />
+            <label class="form-label">存储空间名称（Bucket）</label>
+            <input type="text" class="form-input" v-model="form.qiniu.bucket" placeholder="your-bucket" />
           </div>
           <div class="form-group">
             <label class="form-label">存储区域</label>
-            <select class="form-input" v-model="configs.qiniu.region">
-              <option value="z0">华东-浙江</option>
-              <option value="z1">华北-河北</option>
-              <option value="z2">华南-广东</option>
-              <option value="na0">北美-洛杉矶</option>
-              <option value="as0">东南亚-新加坡</option>
+            <select class="form-input" v-model="form.qiniu.region">
+              <option value="z0">华东-浙江 (z0)</option>
+              <option value="cn-east-2">华东-浙江2 (cn-east-2)</option>
+              <option value="z1">华北-河北 (z1)</option>
+              <option value="z2">华南-广东 (z2)</option>
+              <option value="na0">北美-洛杉矶 (na0)</option>
+              <option value="as0">亚太-新加坡 (as0)</option>
+              <option value="ap-northeast-1">亚太-首尔 (ap-northeast-1)</option>
             </select>
           </div>
           <div class="form-group">
             <label class="form-label">CDN 域名</label>
-            <input type="text" class="form-input" v-model="configs.qiniu.domain" placeholder="https://example.com" />
+            <input type="text" class="form-input" v-model="form.qiniu.domain" placeholder="https://xxx.clouddn.com" />
           </div>
-          <button class="apply-btn" @click="applyHost('qiniu')">保存并使用</button>
+          <div class="config-footer">
+            <a href="https://portal.qiniu.com/kodo/bucket" target="_blank" rel="noopener">七牛云控制台</a>
+            <span v-if="testResult" :class="['test-result', testResult.status]">{{ testResult.message }}</span>
+            <button class="btn-test" @click="testConnection">测试连接</button>
+          </div>
+          <button v-if="imageHostType !== 'qiniu'" class="apply-btn" @click="activate('qiniu')">启用七牛云图床</button>
+          <div v-else class="active-hint">✓ 当前已启用七牛云</div>
         </div>
 
         <!-- 阿里云 OSS -->
         <div v-if="activeTab === 'aliyun'" class="config-panel">
-          <p class="config-desc">配置阿里云对象存储 OSS，上传图片到你的 OSS 存储空间。</p>
+          <div v-if="imageHostType === 'aliyun'" class="active-status">● 当前使用中</div>
           <div class="form-group">
             <label class="form-label">AccessKey ID</label>
-            <input type="text" class="form-input" v-model="configs.aliyun.accessKeyId" placeholder="请输入 AccessKey ID" />
+            <input type="text" class="form-input" v-model="form.aliyun.accessKeyId" placeholder="从阿里云控制台获取" />
           </div>
           <div class="form-group">
             <label class="form-label">AccessKey Secret</label>
-            <input type="password" class="form-input" v-model="configs.aliyun.accessKeySecret" placeholder="请输入 AccessKey Secret" />
+            <input type="password" class="form-input" v-model="form.aliyun.accessKeySecret" placeholder="从阿里云控制台获取" />
           </div>
           <div class="form-group">
-            <label class="form-label">Bucket（存储空间）</label>
-            <input type="text" class="form-input" v-model="configs.aliyun.bucket" placeholder="请输入 Bucket 名称" />
+            <label class="form-label">Bucket 名称</label>
+            <input type="text" class="form-input" v-model="form.aliyun.bucket" placeholder="your-bucket" />
           </div>
           <div class="form-group">
-            <label class="form-label">地域节点（Endpoint）</label>
-            <input type="text" class="form-input" v-model="configs.aliyun.endpoint" placeholder="oss-cn-hangzhou.aliyuncs.com" />
+            <label class="form-label">地域节点</label>
+            <input type="text" class="form-input" v-model="form.aliyun.region" placeholder="oss-cn-hangzhou" />
+            <small>例如：oss-cn-hangzhou（杭州）、oss-cn-beijing（北京）</small>
           </div>
           <div class="form-group">
-            <label class="form-label">自定义域名</label>
-            <input type="text" class="form-input" v-model="configs.aliyun.domain" placeholder="https://img.example.com" />
+            <label class="form-label">自定义域名（可选）</label>
+            <input type="text" class="form-input" v-model="form.aliyun.endpoint" placeholder="https://cdn.example.com" />
           </div>
-          <button class="apply-btn" @click="applyHost('aliyun')">保存并使用</button>
+          <div class="config-footer">
+            <a href="https://oss.console.aliyun.com/bucket" target="_blank" rel="noopener">阿里云 OSS 控制台</a>
+            <span v-if="testResult" :class="['test-result', testResult.status]">{{ testResult.message }}</span>
+            <button class="btn-test" @click="testConnection">测试连接</button>
+          </div>
+          <button v-if="imageHostType !== 'aliyun'" class="apply-btn" @click="activate('aliyun')">启用阿里云 OSS</button>
+          <div v-else class="active-hint">✓ 当前已启用阿里云 OSS</div>
+        </div>
+
+        <!-- 腾讯云 COS -->
+        <div v-if="activeTab === 'tencent'" class="config-panel">
+          <div v-if="imageHostType === 'tencent'" class="active-status">● 当前使用中</div>
+          <div class="form-group">
+            <label class="form-label">SecretId</label>
+            <input type="text" class="form-input" v-model="form.tencent.secretId" placeholder="从腾讯云控制台获取" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">SecretKey</label>
+            <input type="password" class="form-input" v-model="form.tencent.secretKey" placeholder="从腾讯云控制台获取" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">存储桶名称（Bucket）</label>
+            <input type="text" class="form-input" v-model="form.tencent.bucket" placeholder="your-bucket-1234567890" />
+            <small>格式：bucketname-appid</small>
+          </div>
+          <div class="form-group">
+            <label class="form-label">所属地域</label>
+            <input type="text" class="form-input" v-model="form.tencent.region" placeholder="ap-guangzhou" />
+            <small>例如：ap-guangzhou（广州）、ap-beijing（北京）</small>
+          </div>
+          <div class="form-group">
+            <label class="form-label">自定义域名（可选）</label>
+            <input type="text" class="form-input" v-model="form.tencent.endpoint" placeholder="https://cdn.example.com" />
+          </div>
+          <div class="config-footer">
+            <a href="https://console.cloud.tencent.com/cos" target="_blank" rel="noopener">腾讯云 COS 控制台</a>
+            <span v-if="testResult" :class="['test-result', testResult.status]">{{ testResult.message }}</span>
+            <button class="btn-test" @click="testConnection">测试连接</button>
+          </div>
+          <button v-if="imageHostType !== 'tencent'" class="apply-btn" @click="activate('tencent')">启用腾讯云 COS</button>
+          <div v-else class="active-hint">✓ 当前已启用腾讯云 COS</div>
+        </div>
+
+        <!-- S3 兼容 -->
+        <div v-if="activeTab === 's3'" class="config-panel">
+          <div v-if="imageHostType === 's3'" class="active-status">● 当前使用中</div>
+          <div class="form-group">
+            <label class="form-label">Endpoint（必填）</label>
+            <input type="text" class="form-input" v-model="form.s3.endpoint" placeholder="https://s3.amazonaws.com 或 https://xxx.r2.cloudflarestorage.com" />
+            <small>S3 服务地址，不同服务商格式不同</small>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Region（必填）</label>
+            <input type="text" class="form-input" v-model="form.s3.region" placeholder="us-east-1 或 auto" />
+            <small>存储区域，Cloudflare R2 可填 auto</small>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Access Key ID（必填）</label>
+            <input type="text" class="form-input" v-model="form.s3.accessKeyId" placeholder="从服务商控制台获取" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Secret Access Key（必填）</label>
+            <input type="password" class="form-input" v-model="form.s3.secretAccessKey" placeholder="从服务商控制台获取" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Bucket 名称（必填）</label>
+            <input type="text" class="form-input" v-model="form.s3.bucket" placeholder="your-bucket" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">路径前缀（可选）</label>
+            <input type="text" class="form-input" v-model="form.s3.pathPrefix" placeholder="images/wemd" />
+            <small>图片存储的目录前缀</small>
+          </div>
+          <div class="form-group">
+            <label class="form-label">自定义域名（可选）</label>
+            <input type="text" class="form-input" v-model="form.s3.customDomain" placeholder="https://cdn.example.com" />
+            <small>用于访问图片的 CDN 或自定义域名</small>
+          </div>
+          <div class="form-group">
+            <label class="form-label checkbox-label">
+              <input type="checkbox" v-model="form.s3.forcePathStyle" style="width:auto;margin:0 8px 0 0;" />
+              <span>强制 Path Style（MinIO 等自建服务需要开启）</span>
+            </label>
+          </div>
+          <div class="config-footer">
+            <span v-if="testResult" :class="['test-result', testResult.status]">{{ testResult.message }}</span>
+            <button class="btn-test" @click="testConnection">测试连接</button>
+          </div>
+          <button v-if="imageHostType !== 's3'" class="apply-btn" @click="activate('s3')">启用 S3 图床</button>
+          <div v-else class="active-hint">✓ 当前已启用 S3 图床</div>
         </div>
       </div>
     </div>
@@ -116,11 +207,20 @@
 
 <script setup lang="ts">
 import { ref, reactive, watch } from 'vue'
+import {
+  useImageHost,
+  type HostConfigMap,
+  type ImageHostType,
+} from '../composables/useImageHost'
 
-interface ImageHostType {
-  type: string
+interface ImageHostDef {
+  type: ImageHostType
   name: string
-  disabled?: boolean
+}
+
+interface TestResultType {
+  status: 'loading' | 'success' | 'error'
+  message: string
 }
 
 const props = defineProps<{
@@ -134,79 +234,108 @@ const emit = defineEmits<{
   (e: 'change', type: string, config: Record<string, unknown>): void
 }>()
 
-const imageHostTypes: ImageHostType[] = [
-  { type: 'local', name: '本地 Base64' },
+const { imageHostType, configs, setHost } = useImageHost()
+
+const imageHostTypes: ImageHostDef[] = [
+  { type: 'official', name: '官方图床' },
   { type: 'qiniu', name: '七牛云' },
-  { type: 'aliyun', name: '阿里云 OSS' }
+  { type: 'aliyun', name: '阿里云 OSS' },
+  { type: 'tencent', name: '腾讯云 COS' },
+  { type: 's3', name: 'S3 兼容' },
 ]
 
-const activeTab = ref('local')
+const activeTab = ref<ImageHostType>('official')
+const testResult = ref<TestResultType | null>(null)
 
-// 各图床配置
-const configs = reactive({
-  local: {},
-  qiniu: {
-    accessKey: '',
-    secretKey: '',
-    bucket: '',
-    region: 'z0',
-    domain: ''
-  },
-  aliyun: {
-    accessKeyId: '',
-    accessKeySecret: '',
-    bucket: '',
-    endpoint: '',
-    domain: ''
-  }
-})
-
-// 从 localStorage 加载配置
-function loadConfigs(): void {
-  try {
-    const saved = localStorage.getItem('xumd-image-host-configs')
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      Object.assign(configs.qiniu, parsed.qiniu || {})
-      Object.assign(configs.aliyun, parsed.aliyun || {})
-    }
-    const current = localStorage.getItem('xumd-image-host-current')
-    if (current) {
-      activeTab.value = current
-    }
-  } catch (e) {
-    console.warn('Failed to load image host configs:', e)
-  }
+function deepClone(c: HostConfigMap): HostConfigMap {
+  return JSON.parse(JSON.stringify(c)) as HostConfigMap
 }
 
-watch(() => props.visible, (v) => {
-  if (v) {
-    loadConfigs()
-    activeTab.value = props.currentType
-  }
-}, { immediate: true })
+const form = reactive<HostConfigMap>(deepClone(configs))
+
+function syncFormFromStore(): void {
+  const clone = deepClone(configs)
+  form.official = clone.official
+  form.qiniu = clone.qiniu
+  form.aliyun = clone.aliyun
+  form.tencent = clone.tencent
+  form.s3 = clone.s3
+}
+
+watch(
+  () => props.visible,
+  (v) => {
+    if (v) {
+      syncFormFromStore()
+      if (
+        props.currentType === 'official' ||
+        props.currentType === 'qiniu' ||
+        props.currentType === 'aliyun' ||
+        props.currentType === 'tencent' ||
+        props.currentType === 's3'
+      ) {
+        activeTab.value = props.currentType as ImageHostType
+      } else {
+        activeTab.value = 'official'
+      }
+      testResult.value = null
+    }
+  },
+  { immediate: true },
+)
 
 function handleClose(): void {
   emit('update:visible', false)
 }
 
-function switchTab(t: ImageHostType): void {
-  if (t.disabled) return
-  activeTab.value = t.type
+async function runValidate(type: ImageHostType): Promise<boolean> {
+  const { ImageHostManager } = await import('../services/image/ImageUploader')
+  const manager = new ImageHostManager({
+    type,
+    config: form[type] as Record<string, unknown>,
+  })
+  return manager.validate()
 }
 
-function applyHost(type: string): void {
-  // 保存配置到 localStorage
-  try {
-    localStorage.setItem('xumd-image-host-configs', JSON.stringify({
-      qiniu: configs.qiniu,
-      aliyun: configs.aliyun
-    }))
-    localStorage.setItem('xumd-image-host-current', type)
-  } catch (e) {
-    console.warn('Failed to save image host config:', e)
+async function activate(type: ImageHostType): Promise<void> {
+  if (type !== 'official') {
+    testResult.value = { status: 'loading', message: '正在验证配置…' }
+    try {
+      const valid = await runValidate(type)
+      if (!valid) {
+        testResult.value = {
+          status: 'error',
+          message: '无法启用：图床连接测试失败，请检查配置',
+        }
+        return
+      }
+    } catch (e) {
+      testResult.value = {
+        status: 'error',
+        message: `无法启用：验证出错（${e instanceof Error ? e.message : String(e)}）`,
+      }
+      return
+    }
   }
-  emit('change', type, configs[type as keyof typeof configs] as Record<string, unknown>)
+
+  setHost(type, form[type] as Record<string, unknown>)
+  emit('change', type, form[type] as Record<string, unknown>)
+  emit('update:visible', false)
+}
+
+async function testConnection(): Promise<void> {
+  testResult.value = { status: 'loading', message: '正在测试连接…' }
+  try {
+    const ok = await runValidate(activeTab.value)
+    testResult.value = ok
+      ? { status: 'success', message: '配置有效' }
+      : { status: 'error', message: '配置无效' }
+  } catch (e) {
+    testResult.value = {
+      status: 'error',
+      message: e instanceof Error ? e.message : '验证出错',
+    }
+  }
 }
 </script>
 
@@ -228,9 +357,9 @@ function applyHost(type: string): void {
 }
 
 .modal {
-  width: 520px;
-  max-width: 90vw;
-  max-height: 85vh;
+  width: 540px;
+  max-width: 92vw;
+  max-height: 86vh;
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
@@ -352,26 +481,10 @@ function applyHost(type: string): void {
   color: #6ee7b7;
 }
 
-.tab-btn.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .tab-badge {
   font-size: 9px;
   padding: 1px 6px;
   border-radius: 8px;
-  background: #e5e7eb;
-  color: #6b7280;
-  font-weight: 500;
-}
-
-.modal.dark .tab-badge {
-  background: #334155;
-  color: #94a3b8;
-}
-
-.tab-badge.current {
   background: #10b981;
   color: #fff;
 }
@@ -382,50 +495,165 @@ function applyHost(type: string): void {
   flex: 1;
 }
 
-.config-desc {
+.config-panel {
+  font-size: 13px;
+}
+
+.active-status {
   font-size: 12px;
-  color: #6b7280;
-  margin: 0 0 16px 0;
-  line-height: 1.6;
+  color: #10b981;
+  margin-bottom: 12px;
+  font-weight: 600;
 }
 
-.modal.dark .config-desc {
-  color: #94a3b8;
-}
-
-.config-tip {
+.config-footer {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 12px;
-  background: #ecfdf5;
-  border-radius: 6px;
-  margin-bottom: 8px;
-  font-size: 11px;
-  color: #065f46;
-  line-height: 1.5;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
 }
 
-.modal.dark .config-tip {
+.config-footer a {
+  font-size: 12px;
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.config-footer a:hover {
+  text-decoration: underline;
+}
+
+.btn-test {
+  margin-left: auto;
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.btn-test:hover {
+  background: #f3f4f6;
+}
+
+.modal.dark .btn-test {
+  background: #0f172a;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+.test-result {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.test-result.loading {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.test-result.success {
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.test-result.error {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.modal.dark .test-result.loading {
+  background: #1e3a8a;
+  color: #bfdbfe;
+}
+
+.modal.dark .test-result.success {
   background: #064e3b;
   color: #6ee7b7;
 }
 
-.config-tip.warn {
-  background: #fffbeb;
-  color: #92400e;
+.modal.dark .test-result.error {
+  background: #7f1d1d;
+  color: #fecaca;
 }
 
-.modal.dark .config-tip.warn {
-  background: #451a03;
-  color: #fcd34d;
+.official-intro {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
 }
 
-.config-tip svg {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  margin-top: 1px;
+.intro-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  background: #eff6ff;
+  border-radius: 12px;
+  color: #2563eb;
+}
+
+.official-intro h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: #111827;
+}
+
+.modal.dark .official-intro h3 {
+  color: #f1f5f9;
+}
+
+.official-intro p {
+  margin: 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.modal.dark .official-intro p {
+  color: #94a3b8;
+}
+
+.feature-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.feature-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.feature-item span {
+  font-size: 16px;
+}
+
+.feature-item strong {
+  display: block;
+  font-size: 13px;
+  color: #111827;
+}
+
+.modal.dark .feature-item strong {
+  color: #f1f5f9;
+}
+
+.feature-item small {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.modal.dark .feature-item small {
+  color: #94a3b8;
 }
 
 .form-group {
@@ -438,6 +666,12 @@ function applyHost(type: string): void {
   font-weight: 500;
   color: #374151;
   margin-bottom: 5px;
+}
+
+.form-label.checkbox-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
 }
 
 .modal.dark .form-label {
@@ -472,6 +706,13 @@ function applyHost(type: string): void {
   color: #9ca3af;
 }
 
+.form-group small {
+  display: block;
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 4px;
+}
+
 .apply-btn {
   width: 100%;
   margin-top: 16px;
@@ -488,5 +729,20 @@ function applyHost(type: string): void {
 
 .apply-btn:hover {
   background: #059669;
+}
+
+.active-hint {
+  margin-top: 16px;
+  padding: 10px 12px;
+  background: #ecfdf5;
+  color: #065f46;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.modal.dark .active-hint {
+  background: #064e3b;
+  color: #6ee7b7;
 }
 </style>

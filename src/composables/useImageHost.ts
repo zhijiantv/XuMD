@@ -1,56 +1,118 @@
 /**
- * 图床上传组合式函数
+ * 图床组合式函数（复刻 WeMD 的图床配置模型）
  *
- * 背景：
- * 微信公众号编辑器**不支持 base64 内联图片**——粘贴后内联图会被剥离，导致不显示。
- * 同时公众号的"替换图片"功能只对已转存到微信图库 / 可公网访问的外链图片有效。
- * 因此本地图片必须经过图床转为公网直链，复制到公众号后才能显示且可被替换。
+ * WeMD 图床配置说明：
+ *  - 微信公众号编辑器**不支持 base64 内联图片**，粘贴后会被剥离。
+ *  - 因此本地图片必须经由图床转为公网直链，复制到公众号后才能显示且可被"替换图片"功能替换。
  *
- * 本模块提供两个真实可用的免费图床（前端直传，零后端）：
- *  - imgbb：POST https://api.imgbb.com/1/upload?key=API_KEY，字段 image，返回 data.url（直链）
- *  - smms ：POST https://sm.ms/api/v2/upload，header Authorization: API_KEY，字段 smfile，返回 data.url
- * 并保留 local（Base64 离线嵌入）作为无图床时的兜底。
+ * 本模块复刻 WeMD 的 5 种图床：官方 / 七牛云 / 阿里云 OSS / 腾讯云 COS / S3 兼容。
+ * 官方图床开箱即用（无需配置），其余四种为前端直传（零后端）。
  *
- * 上传失败（网络/CORS/key 错误）时回退为 base64，并在返回结果中标记 uploaded=false，
- * 由调用方决定是否提示用户（避免静默丢图）。
+ * 存储方式（与 WeMD 完全一致）：
+ *  - localStorage["imageHostConfigs"]：所有图床配置的集合
+ *  - localStorage["imageHostConfig"]：当前启用的图床配置（{ type, config }）
+ * uploadEditorImage 直接读取 imageHostConfig，因此两者保持一致即可。
  */
 
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
+import type { ImageHostConfig } from '../services/image/ImageUploader'
 
-export type ImageHostType = 'local' | 'imgbb' | 'smms'
+export type ImageHostType = 'official' | 'qiniu' | 'aliyun' | 'tencent' | 's3'
 
-export interface ImageHostConfig {
-  /** ImgBB API Key */
-  imgbbKey: string
-  /** SM.MS API Key */
-  smmsKey: string
+export interface OfficialConfig {
+  serverUrl?: string
 }
 
-export interface UploadResult {
-  /** 最终用于 <img src> 的地址（外链或回退的 base64） */
-  url: string
-  /** 是否成功上传到图床拿到外链 */
-  uploaded: boolean
-  /** 失败原因（上传成功时为空） */
-  error?: string
+export interface QiniuConfig {
+  accessKey: string
+  secretKey: string
+  bucket: string
+  region: string
+  domain: string
 }
 
-// ===== 模块级共享状态（编辑器与插入逻辑共用） =====
-const imageHostType = ref<ImageHostType>('local')
-const imageHostConfig = ref<ImageHostConfig>({ imgbbKey: '', smmsKey: '' })
+export interface AliyunConfig {
+  accessKeyId: string
+  accessKeySecret: string
+  bucket: string
+  region: string
+  endpoint: string
+}
 
-// 从 localStorage 恢复配置
+export interface TencentConfig {
+  secretId: string
+  secretKey: string
+  bucket: string
+  region: string
+  endpoint: string
+}
+
+export interface S3Config {
+  endpoint: string
+  region: string
+  accessKeyId: string
+  secretAccessKey: string
+  bucket: string
+  pathPrefix: string
+  customDomain: string
+  forcePathStyle: boolean
+}
+
+export interface HostConfigMap {
+  official: OfficialConfig
+  qiniu: QiniuConfig
+  aliyun: AliyunConfig
+  tencent: TencentConfig
+  s3: S3Config
+}
+
+const CONFIGS_KEY = 'imageHostConfigs'
+const CURRENT_KEY = 'imageHostConfig'
+
+function emptyConfigs(): HostConfigMap {
+  return {
+    official: {},
+    qiniu: { accessKey: '', secretKey: '', bucket: '', region: 'z0', domain: '' },
+    aliyun: { accessKeyId: '', accessKeySecret: '', bucket: '', region: '', endpoint: '' },
+    tencent: { secretId: '', secretKey: '', bucket: '', region: '', endpoint: '' },
+    s3: {
+      endpoint: '',
+      region: '',
+      accessKeyId: '',
+      secretAccessKey: '',
+      bucket: '',
+      pathPrefix: '',
+      customDomain: '',
+      forcePathStyle: false,
+    },
+  }
+}
+
+const ALL_TYPES: ImageHostType[] = ['official', 'qiniu', 'aliyun', 'tencent', 's3']
+
+// ===== 模块级共享状态（编辑器与插入逻辑共用，单例） =====
+const currentType = ref<ImageHostType>('official')
+const configs = reactive<HostConfigMap>(emptyConfigs())
+
 function loadPersistedConfig(): void {
   try {
-    const saved = localStorage.getItem('xumd-image-host-configs')
+    const saved = localStorage.getItem(CONFIGS_KEY)
     if (saved) {
-      const parsed = JSON.parse(saved)
-      if (parsed.imgbbKey) imageHostConfig.value.imgbbKey = parsed.imgbbKey
-      if (parsed.smmsKey) imageHostConfig.value.smmsKey = parsed.smmsKey
+      const parsed = JSON.parse(saved) as Partial<HostConfigMap>
+      for (const t of ALL_TYPES) {
+        const part = parsed[t]
+        if (part) {
+          // 逐字段合并，避免覆盖默认值里新增的字段
+          Object.assign(configs[t], part)
+        }
+      }
     }
-    const current = localStorage.getItem('xumd-image-host-current') as ImageHostType | null
-    if (current && ['local', 'imgbb', 'smms'].includes(current)) {
-      imageHostType.value = current
+    const current = localStorage.getItem(CURRENT_KEY)
+    if (current) {
+      const c = JSON.parse(current) as ImageHostConfig
+      if (c && ALL_TYPES.includes(c.type as ImageHostType)) {
+        currentType.value = c.type as ImageHostType
+      }
     }
   } catch (e) {
     console.warn('[XuMD] 读取图床配置失败:', e)
@@ -60,135 +122,64 @@ loadPersistedConfig()
 
 function persistConfig(): void {
   try {
+    localStorage.setItem(CONFIGS_KEY, JSON.stringify(configs))
     localStorage.setItem(
-      'xumd-image-host-configs',
+      CURRENT_KEY,
       JSON.stringify({
-        imgbbKey: imageHostConfig.value.imgbbKey,
-        smmsKey: imageHostConfig.value.smmsKey
-      })
+        type: currentType.value,
+        config: configs[currentType.value],
+      }),
     )
-    localStorage.setItem('xumd-image-host-current', imageHostType.value)
   } catch (e) {
     console.warn('[XuMD] 保存图床配置失败:', e)
   }
 }
 
 export function useImageHost() {
+  /** 获取当前启用的图床完整配置 */
+  function getConfig(): ImageHostConfig {
+    return {
+      type: currentType.value,
+      config: { ...configs[currentType.value] } as Record<string, unknown>,
+    }
+  }
+
+  /** 获取指定图床的配置（用于编辑表单初始化） */
+  function getHostConfig<T extends ImageHostType>(type: T): HostConfigMap[T] {
+    return configs[type]
+  }
+
   /**
-   * 上传图片到当前图床，返回可用于 <img src> 的地址。
-   * @param dataUrl 本地图片的 base64 Data URL（data:image/...;base64,....）
-   * @param fileName 文件名（用于图床命名）
+   * 切换并保存当前图床
+   * @param type 图床类型
+   * @param config 该图床的配置（可选，合并写入）
    */
-  async function upload(dataUrl: string, fileName = 'image.png'): Promise<UploadResult> {
-    const type = imageHostType.value
-    if (type === 'local') {
-      return { url: dataUrl, uploaded: false }
-    }
-    try {
-      if (type === 'imgbb') {
-        return await uploadToImgbb(dataUrl, fileName)
-      }
-      if (type === 'smms') {
-        return await uploadToSmms(dataUrl, fileName)
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : '上传失败'
-      console.warn(`[XuMD] 图床上传失败(${type}):`, msg)
-      // 回退 base64，保证图片不丢
-      return { url: dataUrl, uploaded: false, error: msg }
-    }
-    return { url: dataUrl, uploaded: false }
-  }
-
-  async function uploadToImgbb(dataUrl: string, fileName: string): Promise<UploadResult> {
-    const key = imageHostConfig.value.imgbbKey.trim()
-    if (!key) {
-      return { url: dataUrl, uploaded: false, error: '未配置 ImgBB API Key' }
-    }
-    // ImgBB 接受 base64（不含 data: 前缀的裸 base64）或文件
-    const base64Body = stripDataUrlPrefix(dataUrl)
-    const form = new FormData()
-    form.append('image', base64Body)
-    form.append('name', fileName)
-
-    const res = await fetch(`https://api.imgbb.com/1/upload?key=${encodeURIComponent(key)}`, {
-      method: 'POST',
-      body: form
-    })
-    const json = await res.json()
-    if (json && json.success && json.data && json.data.url) {
-      return { url: json.data.url as string, uploaded: true }
-    }
-    const errMsg = (json && json.error && json.error.message) || 'ImgBB 返回异常'
-    return { url: dataUrl, uploaded: false, error: String(errMsg) }
-  }
-
-  async function uploadToSmms(dataUrl: string, fileName: string): Promise<UploadResult> {
-    const key = imageHostConfig.value.smmsKey.trim()
-    if (!key) {
-      return { url: dataUrl, uploaded: false, error: '未配置 SM.MS API Key' }
-    }
-    const blob = await dataUrlToBlob(dataUrl)
-    const form = new FormData()
-    form.append('smfile', blob, fileName)
-    form.append('format', 'json')
-
-    const res = await fetch('https://sm.ms/api/v2/upload', {
-      method: 'POST',
-      headers: {
-        Authorization: key
-      },
-      body: form
-    })
-    const json = await res.json()
-    if (json && json.success && json.data && json.data.url) {
-      return { url: json.data.url as string, uploaded: true }
-    }
-    const errMsg = (json && json.message) || 'SM.MS 返回异常'
-    return { url: dataUrl, uploaded: false, error: String(errMsg) }
-  }
-
-  function setHost(type: ImageHostType, config?: Partial<ImageHostConfig>): void {
-    imageHostType.value = type
+  function setHost(
+    type: ImageHostType,
+    config?: Record<string, unknown>,
+  ): void {
+    currentType.value = type
     if (config) {
-      if (config.imgbbKey !== undefined) imageHostConfig.value.imgbbKey = config.imgbbKey
-      if (config.smmsKey !== undefined) imageHostConfig.value.smmsKey = config.smmsKey
+      Object.assign(configs[type], config)
     }
     persistConfig()
   }
 
+  /** 仅保存某个图床的配置，不切换当前图床 */
+  function saveHostConfig(
+    type: ImageHostType,
+    config: Record<string, unknown>,
+  ): void {
+    Object.assign(configs[type], config)
+    persistConfig()
+  }
+
   return {
-    imageHostType,
-    imageHostConfig,
-    upload,
-    setHost
+    imageHostType: currentType,
+    configs,
+    getConfig,
+    getHostConfig,
+    setHost,
+    saveHostConfig,
   }
-}
-
-// ===== 工具函数 =====
-
-/** 去掉 data:image/...;base64, 前缀，返回裸 base64（ImgBB 需要） */
-function stripDataUrlPrefix(dataUrl: string): string {
-  const idx = dataUrl.indexOf(',')
-  if (dataUrl.startsWith('data:') && idx > -1) {
-    return dataUrl.slice(idx + 1)
-  }
-  return dataUrl
-}
-
-/** base64 Data URL → Blob（SM.MS 用文件流） */
-function dataUrlToBlob(dataUrl: string): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    try {
-      const [meta, b64] = dataUrl.split(',')
-      const mimeMatch = /data:([^;]+)/.exec(meta)
-      const mime = mimeMatch ? mimeMatch[1] : 'image/png'
-      const bin = atob(b64)
-      const arr = new Uint8Array(bin.length)
-      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
-      resolve(new Blob([arr], { type: mime }))
-    } catch (e) {
-      reject(e)
-    }
-  })
 }

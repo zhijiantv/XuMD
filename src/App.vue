@@ -172,6 +172,7 @@ import type { HistoryItem } from './components/Sidebar.vue'
 import { useDarkMode } from './composables/useDarkMode'
 import { useClipboard } from './composables/useClipboard'
 import { useEditorStorage } from './composables/useEditorStorage'
+import { useImageHost, type ImageHostType } from './composables/useImageHost'
 import { useMobileView } from './composables/useMobileView'
 import {
   gzhRender,
@@ -192,7 +193,7 @@ const { isMobile, activeView: mobileView } = useMobileView()
 const { copyHtml: copyHtmlToClipboard, copyText } = useClipboard()
 const {
   articles,
-  currentArticleId: storageArticleId,
+  currentArticleId,
   config,
   storageType,
   saveStatusText,
@@ -206,6 +207,7 @@ const {
   updateCurrentContent,
   switchToFileSystem,
   switchToLocalStorage,
+  switchToIndexedDB,
   init: initStorage
 } = useEditorStorage()
 
@@ -215,11 +217,10 @@ const showThemePanel = ref(false)
 const showHelpPanel = ref(false)
 const showStorageModal = ref(false)
 const showImageHostModal = ref(false)
-const imageHostType = ref('local')
+const { imageHostType, setHost: setImageHost } = useImageHost()
 const previewHtml = ref('')
 const copyOutputHtml = ref('')
 const currentTokens = ref<ThemeTokens>({} as ThemeTokens)
-const currentArticleId = ref('default')
 const storageReady = ref(false)
 // 临时状态文本（复制成功提示等），优先级高于保存状态
 const tempStatusText = ref('')
@@ -338,10 +339,9 @@ async function initArticles(): Promise<void> {
     createdAt: a.createdAt,
     updatedAt: a.updatedAt
   }))
-  currentArticleId.value = storageArticleId.value || articles.value[0]?.id || ''
-  if (historyList.value.length > 0 && mdContent.value === '') {
-    mdContent.value = historyList.value[0].content
-  }
+  // currentArticleId 已在 initStorage 中恢复（localStorage 记录或 articles[0]）
+  // 关键：必须从当前文章恢复 mdContent，而不是使用默认模板
+  loadCurrentArticleContent()
   storageReady.value = true
 }
 
@@ -468,10 +468,9 @@ const mdContent = ref('')
 function loadCurrentArticleContent(): void {
   const current = historyList.value.find(a => a.id === currentArticleId.value)
   mdContent.value = current?.content || defaultMdContent
+  // 恢复后的内容作为撤销基准，避免首次编辑被 undo 回退到空/默认模板
+  lastCommitted = mdContent.value
 }
-loadCurrentArticleContent()
-// 文章初始内容作为撤销基准
-lastCommitted = mdContent.value
 
 // 切换/新建/删除文章导致内容被外部替换时，重置撤销历史，避免旧内容混入栈中
 watch(currentArticleId, () => {
@@ -721,7 +720,23 @@ function extractTitle(md: string): string {
 
 // 存储模式切换
 async function onStorageTypeChange(type: string): Promise<void> {
-  if (type === 'localStorage') {
+  if (type === 'indexeddb') {
+    await switchToIndexedDB()
+    // 重新同步历史记录列表
+    historyList.value = articles.value.map(a => ({
+      id: a.id,
+      title: a.title,
+      theme: getTheme(config.value.themeId)?.structure.name || '新墨绿·新绿',
+      content: a.content,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt
+    }))
+    if (historyList.value.length > 0) {
+      currentArticleId.value = articles.value[0].id
+      mdContent.value = articles.value[0].content
+    }
+    showTempStatus('已切换到浏览器存储（IndexedDB）')
+  } else if (type === 'localStorage') {
     await switchToLocalStorage()
     // 重新同步历史记录列表
     historyList.value = articles.value.map(a => ({
@@ -769,12 +784,14 @@ async function onPickFolder(): Promise<void> {
 }
 
 // 图床切换
-function onImageHostChange(type: string, _config: Record<string, unknown>): void {
-  imageHostType.value = type
+function onImageHostChange(type: string, config: Record<string, unknown>): void {
+  setImageHost(type as ImageHostType, config)
   const nameMap: Record<string, string> = {
-    local: '本地 Base64',
+    official: '官方图床',
     qiniu: '七牛云',
-    aliyun: '阿里云 OSS'
+    aliyun: '阿里云 OSS',
+    tencent: '腾讯云 COS',
+    s3: 'S3 兼容'
   }
   showTempStatus(`图床已切换为：${nameMap[type] || type}`)
   showImageHostModal.value = false
@@ -1088,12 +1105,6 @@ function stopResize(): void {
 // ============================================================
 
 onMounted(() => {
-  // 初始化默认文章的内容和标题
-  const defaultItem = historyList.value.find(a => a.id === 'default')
-  if (defaultItem) {
-    defaultItem.content = mdContent.value
-    defaultItem.title = extractTitle(mdContent.value)
-  }
   nextTick(() => {
     doRender()
   })

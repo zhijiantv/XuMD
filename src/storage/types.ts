@@ -15,7 +15,7 @@ export interface FileItem {
 }
 
 export interface StorageAdapter {
-  readonly type: 'localStorage' | 'filesystem'
+  readonly type: 'indexeddb' | 'localStorage' | 'filesystem'
   readonly name: string
   readonly ready: boolean
 

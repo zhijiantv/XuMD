@@ -11,9 +11,13 @@
 import { ref, computed } from 'vue'
 import { LocalStorageAdapter } from '../storage/LocalStorageAdapter'
 import { FileSystemAdapter } from '../storage/FileSystemAdapter'
+import { IndexedDBAdapter } from '../storage/IndexedDBAdapter'
 import type { StorageAdapter, FileItem } from '../storage/types'
 
 const STORAGE_PREFIX = 'xumd-editor:'
+
+// 存储模式持久化键（复刻 WeMD 的 wemd-storage-adapter）
+const STORAGE_ADAPTER_KEY = `${STORAGE_PREFIX}storageAdapter`
 
 export interface EditorConfig {
   themeId: string
@@ -50,7 +54,7 @@ export function useEditorStorage(key = 'default') {
   const articles = ref<FileItem[]>([])
   const currentArticleId = ref<string>('')
   const config = ref<EditorConfig>({ ...defaultConfig })
-  const storageType = ref<'localStorage' | 'filesystem'>('localStorage')
+  const storageType = ref<'indexeddb' | 'localStorage' | 'filesystem'>('indexeddb')
 
   // 保存状态
   const saveStatus = ref<'idle' | 'editing' | 'saving' | 'saved'>('idle')
@@ -81,11 +85,41 @@ export function useEditorStorage(key = 'default') {
   let isSaving = false
   let pendingSave = false
 
-  // 从 localStorage 读取存储类型
-  function loadStorageType(): void {
-    const saved = localStorage.getItem(storageTypeKey)
-    if (saved === 'filesystem' || saved === 'localStorage') {
-      storageType.value = saved
+  // 解析初始存储模式（复刻 WeMD：优先读取已持久化的模式，否则默认浏览器存储 IndexedDB）
+  function resolveInitialType(): 'indexeddb' | 'localStorage' | 'filesystem' {
+    const persisted = localStorage.getItem(STORAGE_ADAPTER_KEY)
+    if (persisted === 'indexeddb' || persisted === 'localStorage' || persisted === 'filesystem') {
+      return persisted
+    }
+    // 兼容旧版 storageType 键
+    const legacy = localStorage.getItem(storageTypeKey)
+    if (legacy === 'filesystem') return 'filesystem'
+    // 旧版默认是 localStorage，或首次运行：统一升级为 IndexedDB（并迁移已有数据）
+    return 'indexeddb'
+  }
+
+  // 持久化当前存储模式（下次启动自动恢复，复刻 WeMD 的 restoreLastAdapter）
+  function persistAdapterType(): void {
+    try {
+      localStorage.setItem(STORAGE_ADAPTER_KEY, storageType.value)
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // 从 localStorage 迁移已有文章到目标适配器（切换/升级时保留数据，不影响原数据）
+  async function migrateFromLocalStorage(target: StorageAdapter): Promise<boolean> {
+    try {
+      const legacy = new LocalStorageAdapter(key)
+      const files = await legacy.listFiles()
+      if (files.length === 0) return false
+      for (const f of files) {
+        await target.writeFile(f)
+      }
+      return true
+    } catch (e) {
+      console.warn('[XuMD] 从 localStorage 迁移失败:', e)
+      return false
     }
   }
 
@@ -122,33 +156,66 @@ export function useEditorStorage(key = 'default') {
     }
   }
 
-  // 初始化
-  async function init(): Promise<void> {
-    loadStorageType()
-    loadConfig()
-
-    // 根据存储类型创建适配器
-    if (storageType.value === 'filesystem') {
-      const fsAdapter = new FileSystemAdapter()
-      const ok = await fsAdapter.init()
-      if (ok) {
-        adapter = fsAdapter
-      } else {
-        // 初始化失败，回退到 localStorage
-        storageType.value = 'localStorage'
-        adapter = new LocalStorageAdapter(key)
-      }
-    } else {
+  // 初始化 IndexedDB 存储（默认模式）：打开数据库，必要时从 localStorage 迁移
+  async function initIndexedDB(migrate: boolean): Promise<void> {
+    const idb = new IndexedDBAdapter()
+    if (!(await idb.init())) {
+      // IndexedDB 不可用，回退到 localStorage
       adapter = new LocalStorageAdapter(key)
       await adapter.init()
+      storageType.value = 'localStorage'
+      await loadArticles()
+      if (articles.value.length === 0) await createDefaultArticle()
+      persistAdapterType()
+      return
     }
-
+    adapter = idb
+    storageType.value = 'indexeddb'
     await loadArticles()
 
-    // 如果没有文章，创建默认文章
+    // 首次使用 IndexedDB 且为空：尝试把 localStorage 里的旧文章迁过来（不破坏原数据）
+    if (articles.value.length === 0 && migrate) {
+      await migrateFromLocalStorage(idb)
+      await loadArticles()
+    }
     if (articles.value.length === 0) {
       await createDefaultArticle()
     }
+    persistAdapterType()
+  }
+
+  // 初始化
+  async function init(): Promise<void> {
+    loadConfig()
+    const initialType = resolveInitialType()
+    storageType.value = initialType
+
+    if (initialType === 'filesystem') {
+      const fsAdapter = new FileSystemAdapter()
+      if (await fsAdapter.init()) {
+        adapter = fsAdapter
+      } else {
+        // 初始化失败，回退到 IndexedDB
+        await initIndexedDB(true)
+        return
+      }
+      await loadArticles()
+      if (articles.value.length === 0) await createDefaultArticle()
+      persistAdapterType()
+      return
+    }
+
+    if (initialType === 'indexeddb') {
+      await initIndexedDB(true)
+      return
+    }
+
+    // localStorage 模式
+    adapter = new LocalStorageAdapter(key)
+    await adapter.init()
+    await loadArticles()
+    if (articles.value.length === 0) await createDefaultArticle()
+    persistAdapterType()
   }
 
   // 创建默认欢迎文章
@@ -429,7 +496,7 @@ hello();
     // 切换适配器
     adapter = fsAdapter
     storageType.value = 'filesystem'
-    localStorage.setItem(storageTypeKey, 'filesystem')
+    persistAdapterType()
 
     // 加载文件夹中的文章
     await loadArticles()
@@ -448,13 +515,38 @@ hello();
     adapter = new LocalStorageAdapter(key)
     await adapter.init()
     storageType.value = 'localStorage'
-    localStorage.setItem(storageTypeKey, 'localStorage')
+    persistAdapterType()
     await loadArticles()
 
     // 如果 localStorage 为空，创建默认文章
     if (articles.value.length === 0) {
       await createDefaultArticle()
     }
+  }
+
+  // 切换到 IndexedDB 存储（复刻 WeMD 默认浏览器存储模式）
+  async function switchToIndexedDB(): Promise<void> {
+    // 先保存当前文章到旧适配器（adapter 此刻仍是切换前的）
+    await doSave()
+    const idb = new IndexedDBAdapter()
+    if (!(await idb.init())) {
+      console.warn('[XuMD] 当前浏览器不支持 IndexedDB，保持原存储模式')
+      return
+    }
+    // 迁移：若 IndexedDB 为空，把旧适配器的文章一并搬过来
+    const existing = await idb.listFiles()
+    if (existing.length === 0) {
+      await migrateFromLocalStorage(idb)
+    } else {
+      // 确保当前文章最新内容已写入
+      const current = articles.value.find((a) => a.id === currentArticleId.value)
+      if (current) await idb.writeFile(current)
+    }
+    adapter = idb
+    storageType.value = 'indexeddb'
+    persistAdapterType()
+    await loadArticles()
+    if (articles.value.length === 0) await createDefaultArticle()
   }
 
   // 更新当前文章内容和元信息（不触发保存，由 scheduleSave/saveNow 控制）
@@ -500,6 +592,7 @@ hello();
     updateCurrentContent,
     switchToFileSystem,
     switchToLocalStorage,
+    switchToIndexedDB,
     clearAll,
     init,
     formatRelativeTime
