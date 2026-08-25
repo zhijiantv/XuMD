@@ -40,10 +40,16 @@ export function inlineCss(html: string, options: CssInlineOptions): string {
     styles.forEach(s => s.remove())
   }
 
-  // 4. 移除 class 属性
+  // 4. 移除 class 属性（但保留 KaTeX / Mermaid 等第三方库/异步渲染必需的类）
   if (removeClasses) {
     const all = root.querySelectorAll('[class]')
-    all.forEach(el => el.removeAttribute('class'))
+    all.forEach(el => {
+      // 保留 KaTeX 公式渲染所需的类（由 katex.min.css 提供样式）
+      if (el.closest('.katex') || el.classList.contains('katex')) return
+      // 保留 gzh-mermaid 类（供 renderMermaidInHtml 异步定位并替换为 SVG）
+      if (el.classList.contains('gzh-mermaid')) return
+      el.removeAttribute('class')
+    })
   }
 
   return root.innerHTML

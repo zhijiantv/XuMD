@@ -1177,7 +1177,8 @@ function registerMathBlock(md: MarkdownIt): void {
     token.content = content.trim()
     token.map = [startLine, endLineFound]
 
-    state.line = nextLine
+    // +1 消费结束 $$ 分隔符行，避免被当作普通文本渲染
+    state.line = nextLine + 1
     return true
   })
 

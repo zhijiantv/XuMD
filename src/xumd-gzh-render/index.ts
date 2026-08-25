@@ -1043,13 +1043,13 @@ function replaceStepItem(
 ): void {
   const title = el.getAttribute('data-title') || ''
   const desc = el.getAttribute('data-desc') || ''
-  const num = String(index + 1).padStart(2, '0')
+  const stepIndex = String(index + 1).padStart(2, '0')
   const html = renderTemplate(components.stepItem, {
     tokens,
     vars: {
-      num,
+      index: stepIndex,
       title: escapeHtml(title),
-      description: escapeHtml(desc)
+      content: escapeHtml(desc)
     }
   })
   replaceWith(el, html)
@@ -1335,11 +1335,15 @@ function replaceMermaid(
   _structure: ThemeStructure
 ): void {
   const code = (el.getAttribute('data-code') || '').replace(/&quot;/g, '"')
-  const html = renderTemplate(components.mermaid, {
+  // 渲染模板，但外层包裹带 gzh-mermaid 类和 data-code 的容器
+  // 使后续 renderMermaidInHtml 能定位到节点并异步替换为 SVG
+  const innerHtml = renderTemplate(components.mermaid, {
     tokens,
     vars: { svgOut: `<p style="color:${tokens.subTextColor};font-size:13px;margin:0;">图表渲染中…</p>`, code: escapeHtml(code) }
   })
-  replaceWith(el, html)
+  const safeCode = code.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const wrappedHtml = `<section class="gzh-mermaid" data-code="${safeCode}">${innerHtml}</section>`
+  replaceWith(el, wrappedHtml)
 }
 
 /**
