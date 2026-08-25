@@ -132,7 +132,7 @@ function registerContainerBlocks(md: MarkdownIt): void {
     const lineText = state.src.slice(startPos, state.eMarks[startLine])
 
     // 匹配 :::xxx 可选标题
-    const match = lineText.match(/^:::(tip|warning|info)(?:\s+(.*))?$/)
+    const match = lineText.match(/^:::\s*(tip|warning|info)(?:\s+(.*))?$/)
     if (!match) return false
     if (silent) return true
 
@@ -214,7 +214,7 @@ function registerFaqContainer(md: MarkdownIt): void {
     const startPos = state.bMarks[startLine] + state.tShift[startLine]
     const lineText = state.src.slice(startPos, state.eMarks[startLine])
 
-    const match = lineText.match(/^:::faq(?:\s+(.*))?$/)
+    const match = lineText.match(/^:::\s*faq(?:\s+(.*))?$/)
     if (!match) return false
     if (silent) return true
 
@@ -316,7 +316,7 @@ function registerCoverContainer(md: MarkdownIt): void {
     const lineText = state.src.slice(startPos, state.eMarks[startLine])
 
     // 匹配 :::cover 可选标题
-    const match = lineText.match(/^:::cover(?:\s+(.*))?$/)
+    const match = lineText.match(/^:::\s*cover(?:\s+(.*))?$/)
     if (!match) return false
     if (silent) return true
 
@@ -505,7 +505,7 @@ function registerQuoteContainer(md: MarkdownIt): void {
     const startPos = state.bMarks[startLine] + state.tShift[startLine]
     const lineText = state.src.slice(startPos, state.eMarks[startLine])
 
-    const match = lineText.match(/^:::quote(?:\s+(.*))?$/)
+    const match = lineText.match(/^:::\s*quote(?:\s+(.*))?$/)
     if (!match) return false
     if (silent) return true
 
@@ -568,7 +568,7 @@ function registerTimelineContainer(md: MarkdownIt): void {
     const startPos = state.bMarks[startLine] + state.tShift[startLine]
     const lineText = state.src.slice(startPos, state.eMarks[startLine])
 
-    if (!/^:::timeline\s*$/.test(lineText)) return false
+    if (!/^:::\s*timeline\s*$/.test(lineText)) return false
     if (silent) return true
 
     // 查找结束标记
@@ -761,7 +761,7 @@ function registerHrContainer(md: MarkdownIt): void {
     const startPos = state.bMarks[startLine] + state.tShift[startLine]
     const lineText = state.src.slice(startPos, state.eMarks[startLine])
 
-    const match = lineText.match(/^:::hr(?:\s+(.*))?$/)
+    const match = lineText.match(/^:::\s*hr(?:\s+(.*))?$/)
     if (!match) return false
     if (silent) return true
 

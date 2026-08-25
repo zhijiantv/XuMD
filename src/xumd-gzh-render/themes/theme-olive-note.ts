@@ -131,12 +131,18 @@ export const oliveNote: Theme = {
 </section>`,
 
       warningCard: `<section style="margin:0 24px 20px;background:{{token.warningBg}};border:1px solid {{token.warningColor}};padding:12px 16px;">
+  <p style="margin:0 0 6px;">
+    <span style="display:inline-block;background:{{token.warningColor}};color:#fff;font-size:11px;font-weight:700;padding:2px 10px;border-radius:2px;letter-spacing:1px;"><span leaf="">{{title}}</span></span>
+  </p>
   <p style="font-size:13px;color:{{token.warningTextColor}};margin:0;font-weight:700;">
     <span leaf="">{{content}}</span>
   </p>
 </section>`,
 
       infoCard: `<section style="margin:0 24px 20px;background:#fff;border:1px solid {{token.borderColor}};padding:14px 18px;">
+  <p style="margin:0 0 6px;">
+    <span style="display:inline-block;background:{{token.primary}};color:#fff;font-size:11px;font-weight:700;padding:2px 10px;border-radius:2px;letter-spacing:1px;"><span leaf="">{{title}}</span></span>
+  </p>
   <p style="font-size:14px;color:{{token.textColor}};margin:0;line-height:1.8;">
     {{content}}
   </p>

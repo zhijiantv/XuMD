@@ -171,12 +171,18 @@ export const moyuGreen: Theme = {
 </section>`,
 
       warningCard: `<section style="background:{{token.warningBg}};border:1px solid {{token.highlightBg}};border-radius:12px;padding:12px 16px;margin-bottom:20px;">
+  <p style="margin:0 0 6px;">
+    <span style="display:inline-block;background:{{token.warningColor}};color:#FFFFFF;font-size:11px;font-weight:700;padding:2px 10px;border-radius:4px;letter-spacing:1px;"><span leaf="">{{title}}</span></span>
+  </p>
   <p style="font-size:13px;color:{{token.warningTextColor}};margin:0;font-weight:700;">
     <span leaf="">{{content}}</span>
   </p>
 </section>`,
 
       infoCard: `<section style="background:{{token.primaryBg}};padding:12px 16px;border-radius:8px;border:1px solid {{token.primaryLight}};margin-bottom:20px;">
+  <p style="margin:0 0 6px;">
+    <span style="display:inline-block;background:{{token.primary}};color:#FFFFFF;font-size:11px;font-weight:700;padding:2px 10px;border-radius:4px;letter-spacing:1px;"><span leaf="">{{title}}</span></span>
+  </p>
   <p style="font-size:13px;color:{{token.textColor}};margin:0;line-height:1.7;text-align:justify;">
     {{content}}
   </p>

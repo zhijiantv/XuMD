@@ -143,12 +143,18 @@ export const zenEmpty: Theme = {
 </section>`,
 
       warningCard: `<section style="margin:0 16px 24px;padding:16px 0;border-top:1px solid {{token.warningColor}};border-bottom:1px solid {{token.warningColor}};">
+  <p style="margin:0 0 8px;text-align:center;">
+    <span style="font-size:11px;color:{{token.warningColor}};font-weight:600;letter-spacing:2px;"><span leaf="">{{title}}</span></span>
+  </p>
   <p style="font-size:13px;color:{{token.warningTextColor}};margin:0;font-weight:600;text-align:center;background:#FFFFFF;">
     <span leaf="">{{content}}</span>
   </p>
 </section>`,
 
       infoCard: `<section style="margin:0 16px 24px;padding:16px 0;border-left:1px solid {{token.primary}};padding-left:20px;">
+  <p style="margin:0 0 6px;">
+    <span style="font-size:11px;color:{{token.primary}};font-weight:600;letter-spacing:2px;"><span leaf="">{{title}}</span></span>
+  </p>
   <p style="font-size:14px;color:{{token.textColor}};margin:0;line-height:1.9;">
     {{content}}
   </p>
